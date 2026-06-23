@@ -1,0 +1,32 @@
+{
+  "name": "webpilot-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser workflow agent that plans web research tasks, browses pages, extracts structured facts, and drafts cited reports.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "next": "^16.2.9",
+    "playwright": "^1.61.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  },
+  "overrides": {
+    "postcss": "^8.5.15"
+  }
+}
