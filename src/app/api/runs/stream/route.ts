@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   const task = body.task?.trim();
 
   if (!task) {
-    return Response.json({ error: "Task is required." }, { status: 400 });
+    return Response.json({ error: "请输入任务。" }, { status: 400 });
   }
 
   const encoder = new TextEncoder();
