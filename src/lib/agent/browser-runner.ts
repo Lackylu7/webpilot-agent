@@ -22,7 +22,7 @@ export async function browseTarget(target: ResearchTarget): Promise<BrowserSnaps
     target: target.name,
     url,
     title: target.name,
-    excerpt: `The live page could not be reached. WebPilot kept the source in the report so the user can inspect it manually: ${url}`,
+    excerpt: `实时页面暂时无法访问。WebPilot 已保留来源链接，方便用户手动复核：${url}`,
     capturedAt: nowIso(),
     sourceType: "seed"
   };
