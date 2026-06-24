@@ -34,8 +34,8 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
     run.updatedAt = nowIso();
     emit({ type: "stage", stage: "plan", status: "planning" });
     emitTimeline(run, emit, {
-      title: "Plan created",
-      detail: `Generated ${plan.steps.length} steps for ${plan.targets.length} target${plan.targets.length === 1 ? "" : "s"}.`,
+      title: "已生成执行计划",
+      detail: `规划了 ${plan.steps.length} 个步骤，准备调研 ${plan.targets.length} 个对象。`,
       status: "completed",
       durationMs: Date.now() - planStarted
     });
@@ -45,7 +45,7 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
     for (const target of plan.targets) {
       const browseStarted = Date.now();
       emitTimeline(run, emit, {
-        title: `Open ${target.name}`,
+        title: `打开 ${target.name}`,
         detail: target.officialUrl ?? target.query,
         status: "running",
         url: target.officialUrl
@@ -55,8 +55,8 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
       run.updatedAt = nowIso();
       emit({ type: "snapshot", snapshot });
       emitTimeline(run, emit, {
-        title: `Captured ${target.name}`,
-        detail: `${snapshot.title} (${snapshot.sourceType})`,
+        title: `已捕获 ${target.name}`,
+        detail: `${snapshot.title}（${sourceTypeText(snapshot.sourceType)}）`,
         status: "completed",
         url: snapshot.url,
         durationMs: Date.now() - browseStarted
@@ -70,8 +70,8 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
       run.facts.push(...facts);
       emit({ type: "facts", facts: run.facts });
       emitTimeline(run, emit, {
-        title: `Extracted ${target.name} facts`,
-        detail: `${facts.length} structured row${facts.length === 1 ? "" : "s"} added to the comparison table.`,
+        title: `已抽取 ${target.name} 信息`,
+        detail: `新增 ${facts.length} 行结构化数据到对比表。`,
         status: facts.length > 0 ? "completed" : "warning",
         url: snapshot.url,
         durationMs: Date.now() - extractStarted
@@ -85,8 +85,8 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
     run.report = report;
     emit({ type: "report", report });
     emitTimeline(run, emit, {
-      title: "Final report drafted",
-      detail: `${report.sources.length} sources cited and ${report.takeaways.length} takeaways generated.`,
+      title: "最终报告已生成",
+      detail: `引用了 ${report.sources.length} 个来源，生成 ${report.takeaways.length} 条关键结论。`,
       status: "completed"
     });
 
@@ -97,12 +97,12 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
     emit({ type: "done", run });
     return run;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown agent failure";
+    const message = error instanceof Error ? error.message : "未知的 Agent 运行错误";
     run.status = "failed";
     run.error = message;
     run.updatedAt = nowIso();
     emitTimeline(run, emit, {
-      title: "Run failed",
+      title: "运行失败",
       detail: message,
       status: "failed"
     });
@@ -126,4 +126,11 @@ function emitTimeline(
   run.timeline.push(timelineItem);
   run.updatedAt = nowIso();
   emit({ type: "timeline", item: timelineItem });
+}
+
+function sourceTypeText(sourceType: string) {
+  if (sourceType === "browser") return "浏览器";
+  if (sourceType === "fetch") return "网页读取";
+  if (sourceType === "seed") return "演示数据";
+  return sourceType;
 }
