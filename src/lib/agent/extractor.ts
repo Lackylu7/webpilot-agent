@@ -71,7 +71,7 @@ async function extractWithLlm(snapshot: BrowserSnapshot): Promise<ExtractedFact[
           {
             role: "system",
             content:
-              "Extract pricing or comparison facts from a browser page excerpt. Return only JSON with a facts array. If data is missing, return an empty facts array."
+              "从浏览器页面摘要中抽取价格或对比信息。请尽量用中文填写 plan、billing、notes。只返回包含 facts 数组的 JSON；如果缺少数据，返回空 facts 数组。"
           },
           {
             role: "user",
@@ -129,7 +129,7 @@ async function extractWithLlm(snapshot: BrowserSnapshot): Promise<ExtractedFact[
 
 function compactNote(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) return "Extracted from page context.";
+  if (!normalized) return "从页面上下文中抽取。";
   return normalized.slice(0, 120);
 }
 
