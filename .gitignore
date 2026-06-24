@@ -1,0 +1,15 @@
+.next/
+node_modules/
+coverage/
+dist/
+data/
+.env
+.env*.local
+playwright-report/
+test-results/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dev-server.log
+*.tsbuildinfo
