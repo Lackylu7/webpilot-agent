@@ -5,16 +5,33 @@ import type { AgentReport, AgentRun, BrowserSnapshot, ExtractedFact, RunEvent, T
 import { formatDuration } from "@/lib/utils/time";
 
 const sampleTasks = [
-  "Compare Notion, ClickUp, and Linear pricing",
-  "Best AI meeting note takers for small teams",
-  "2026 product analytics tools comparison",
-  "Stripe vs Paddle fees for SaaS"
+  "对比 Notion、ClickUp 和 Linear 的定价",
+  "调研适合小团队的 AI 会议纪要工具",
+  "对比 2026 年产品分析工具",
+  "分析 Stripe 和 Paddle 的 SaaS 收费差异"
 ];
 
-const presets = ["SaaS pricing comparison", "Feature comparison table", "Market research report", "Academic literature review"];
+const presets = ["SaaS 定价对比", "功能对比表", "市场调研报告", "学术资料综述"];
+
+const statusText: Record<string, string> = {
+  idle: "空闲",
+  planning: "规划中",
+  running: "执行中",
+  extracting: "抽取中",
+  reporting: "生成报告",
+  completed: "已完成",
+  failed: "失败"
+};
+
+const sourceText: Record<string, string> = {
+  browser: "浏览器",
+  fetch: "网页读取",
+  seed: "演示数据",
+  idle: "待命"
+};
 
 export default function Home() {
-  const [task, setTask] = useState("Compare Notion, ClickUp, and Linear pricing");
+  const [task, setTask] = useState("对比 Notion、ClickUp 和 Linear 的定价");
   const [isRunning, setIsRunning] = useState(false);
   const [run, setRun] = useState<AgentRun | null>(null);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
@@ -28,6 +45,7 @@ export default function Home() {
   const activeStage = run?.activeStage ?? "plan";
   const status = run?.status ?? "idle";
   const completedSteps = timeline.filter((item) => item.status === "completed").length;
+  const groupedFacts = useMemo(() => facts.slice(0, 12), [facts]);
 
   async function startRun(event: FormEvent) {
     event.preventDefault();
@@ -49,7 +67,7 @@ export default function Home() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Unable to start browser workflow.");
+        throw new Error("无法启动浏览器工作流。");
       }
 
       const reader = response.body.getReader();
@@ -71,7 +89,7 @@ export default function Home() {
         }
       }
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "The run failed unexpectedly.");
+      setError(runError instanceof Error ? runError.message : "运行失败，请稍后重试。");
     } finally {
       setIsRunning(false);
     }
@@ -107,8 +125,6 @@ export default function Home() {
     }
   }
 
-  const groupedFacts = useMemo(() => facts.slice(0, 12), [facts]);
-
   return (
     <main className="shell">
       <header className="topbar">
@@ -116,30 +132,26 @@ export default function Home() {
           <span className="brand-mark">W</span>
           <strong>WebPilot Agent</strong>
           <span className="divider" />
-          <span>Ask the web to work</span>
+          <span>让网页自己干活</span>
         </div>
         <div className="top-actions">
           <span className="online-dot" />
-          <span>Agent online</span>
-          <button className="soft-button">Run mode: Smart</button>
-          <button className="icon-button" aria-label="Help">
-            ?
-          </button>
-          <button className="icon-button" aria-label="Settings">
-            ⚙
-          </button>
+          <span>Agent 在线</span>
+          <button className="soft-button">运行模式：智能</button>
+          <button className="icon-button" aria-label="帮助">?</button>
+          <button className="icon-button" aria-label="设置">设置</button>
           <span className="avatar">AK</span>
         </div>
       </header>
 
       <aside className="sidebar">
         <section>
-          <p className="section-label">New task</p>
-          <button className="new-task">+ New task <span>⌘ K</span></button>
+          <p className="section-label">新任务</p>
+          <button className="new-task">+ 新建任务 <span>Ctrl K</span></button>
         </section>
 
         <section>
-          <p className="section-label">Task history</p>
+          <p className="section-label">任务历史</p>
           <div className="history-list">
             {sampleTasks.map((item, index) => (
               <button
@@ -148,24 +160,24 @@ export default function Home() {
                 onClick={() => setTask(item)}
               >
                 <span>{item}</span>
-                <small>{index === 0 ? "Just now" : `${index + 1}h ago`}</small>
+                <small>{index === 0 ? "刚刚" : `${index + 1} 小时前`}</small>
               </button>
             ))}
           </div>
-          <button className="link-button">View all history</button>
+          <button className="link-button">查看全部历史</button>
         </section>
 
         <section>
-          <p className="section-label">Saved presets</p>
+          <p className="section-label">保存的预设</p>
           <div className="preset-list">
             {presets.map((preset) => (
               <button key={preset} onClick={() => setTask(preset)} className="preset-item">
-                <span className="preset-icon">▣</span>
+                <span className="preset-icon">□</span>
                 {preset}
               </button>
             ))}
           </div>
-          <button className="link-button">Manage presets</button>
+          <button className="link-button">管理预设</button>
         </section>
       </aside>
 
@@ -174,57 +186,57 @@ export default function Home() {
           <textarea
             value={task}
             onChange={(event) => setTask(event.target.value)}
-            aria-label="Browser workflow task"
-            placeholder="Ask WebPilot to research a market, compare products, or extract facts from websites..."
+            aria-label="浏览器工作流任务"
+            placeholder="让 WebPilot 调研市场、对比产品，或者从网页里抽取结构化信息..."
           />
           <div className="composer-footer">
-            <span>◎ Auto</span>
-            <span>⌁ Add context</span>
-            <button className="primary-button" aria-label="Run workflow" disabled={isRunning}>
-              {isRunning ? "Running..." : "▷ Run"}
+            <span>自动模式</span>
+            <span>添加上下文</span>
+            <button className="primary-button" aria-label="运行工作流" disabled={isRunning}>
+              {isRunning ? "运行中..." : "运行"}
             </button>
           </div>
         </form>
 
         <div className="stage-strip panel">
-          <StageStep name="Plan" detail="Create browsing plan" active={activeStage === "plan"} done={completedSteps > 0} />
-          <StageStep name="Run" detail="Execute steps" active={activeStage === "run"} done={snapshots.length > 0} />
-          <StageStep name="Needs approval" detail="Read-only safety gate" active={activeStage === "approval"} warning />
-          <StageStep name="Extract" detail="Normalize facts" active={activeStage === "extract"} done={facts.length > 0} />
-          <StageStep name="Report" detail="Cite sources" active={activeStage === "report"} done={Boolean(report)} />
+          <StageStep name="规划" detail="生成浏览计划" active={activeStage === "plan"} done={completedSteps > 0} />
+          <StageStep name="执行" detail="访问网页" active={activeStage === "run"} done={snapshots.length > 0} />
+          <StageStep name="人工确认" detail="只读安全边界" active={activeStage === "approval"} warning />
+          <StageStep name="抽取" detail="整理事实" active={activeStage === "extract"} done={facts.length > 0} />
+          <StageStep name="报告" detail="引用来源" active={activeStage === "report"} done={Boolean(report)} />
         </div>
 
         <div className="center-grid">
           <section className="panel timeline-panel">
-            <PanelTitle title="Execution timeline" meta={status} />
+            <PanelTitle title="执行时间线" meta={statusText[status] ?? status} />
             <div className="timeline">
               {timeline.length === 0 ? (
-                <EmptyState title="Ready to launch" detail="Start a run to watch WebPilot plan, browse, extract, and report." />
+                <EmptyState title="准备就绪" detail="点击运行后，你会看到 WebPilot 规划、浏览、抽取和生成报告的全过程。" />
               ) : (
                 timeline.map((item) => <TimelineRow key={item.id} item={item} />)
               )}
             </div>
             <div className="panel-footer">
-              <span>Auto-scroll <span className="toggle-on" /></span>
-              <button className="soft-button">View plan</button>
+              <span>自动滚动 <span className="toggle-on" /></span>
+              <button className="soft-button">查看计划</button>
             </div>
           </section>
 
           <section className="panel browser-panel">
-            <PanelTitle title="Browser / session preview" meta={activeSnapshot?.sourceType ?? "idle"} />
+            <PanelTitle title="浏览器 / 会话预览" meta={sourceText[activeSnapshot?.sourceType ?? "idle"]} />
             <div className="browser-address">
               <span>↗</span>
-              <span>{activeSnapshot?.url ?? "Waiting for browser session..."}</span>
+              <span>{activeSnapshot?.url ?? "等待浏览器会话启动..."}</span>
               <span>↻</span>
             </div>
             <div className="browser-preview">
               <div className="browser-page">
                 <div className="mini-nav">
                   <strong>{activeSnapshot?.target ?? "WebPilot"}</strong>
-                  <span>{activeSnapshot?.title ?? "Read-only browsing session"}</span>
+                  <span>{activeSnapshot?.title ?? "只读浏览会话"}</span>
                 </div>
-                <h3>{activeSnapshot?.title ?? "No page captured yet"}</h3>
-                <p>{activeSnapshot?.excerpt ?? "The browser preview will show the current source, page title, and extracted page excerpt."}</p>
+                <h3>{activeSnapshot?.title ?? "还没有捕获页面"}</h3>
+                <p>{activeSnapshot?.excerpt ?? "浏览器预览会展示当前来源、页面标题和 Agent 读取到的网页摘要。"}</p>
               </div>
             </div>
             <ApprovalCard state={approvalState} onChange={setApprovalState} />
@@ -234,22 +246,22 @@ export default function Home() {
 
       <aside className="insights">
         <section className="panel facts-panel">
-          <PanelTitle title="Extracted facts" meta={`${facts.length} rows`} />
+          <PanelTitle title="抽取结果" meta={`${facts.length} 行`} />
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th>Plan</th>
-                  <th>Price</th>
-                  <th>Billing</th>
-                  <th>Notes</th>
+                  <th>产品</th>
+                  <th>方案</th>
+                  <th>价格</th>
+                  <th>计费</th>
+                  <th>备注</th>
                 </tr>
               </thead>
               <tbody>
                 {groupedFacts.length === 0 ? (
                   <tr>
-                    <td colSpan={5}>No facts extracted yet.</td>
+                    <td colSpan={5}>还没有抽取到事实。</td>
                   </tr>
                 ) : (
                   groupedFacts.map((fact, index) => (
@@ -265,22 +277,22 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-          <button className="soft-button full-width">Open full data table ↗</button>
+          <button className="soft-button full-width">打开完整数据表 ↗</button>
         </section>
 
         <section className="panel report-panel">
-          <PanelTitle title="Final report" meta="MD" />
+          <PanelTitle title="最终报告" meta="MD" />
           {report ? (
             <article className="report">
               <h2>{report.title}</h2>
               <p>{report.summary}</p>
-              <h3>Key takeaways</h3>
+              <h3>关键结论</h3>
               <ul>
                 {report.takeaways.map((takeaway) => (
                   <li key={takeaway}>{takeaway}</li>
                 ))}
               </ul>
-              <h3>Sources</h3>
+              <h3>来源</h3>
               <ol>
                 {report.sources.map((source) => (
                   <li key={source.url}>
@@ -292,15 +304,15 @@ export default function Home() {
               </ol>
             </article>
           ) : (
-            <EmptyState title="Report will appear here" detail="WebPilot will cite every captured source and preserve structured facts." />
+            <EmptyState title="报告会显示在这里" detail="WebPilot 会保留每个来源链接，并把抽取结果整理成可复制的报告。" />
           )}
           {error && <p className="error">{error}</p>}
           <div className="report-actions">
             <button className="soft-button" disabled={!report} onClick={() => navigator.clipboard?.writeText(report?.markdown ?? "")}>
-              Copy report
+              复制报告
             </button>
             <button className="soft-button" disabled={!activeSnapshot} onClick={() => activeSnapshot && window.open(activeSnapshot.url, "_blank")}>
-              Open in new tab ↗
+              新窗口打开 ↗
             </button>
           </div>
         </section>
@@ -367,14 +379,14 @@ function ApprovalCard({
   return (
     <div className={`approval-card ${state}`}>
       <div className="approval-head">
-        <strong>Approval required</strong>
-        <span>Read-only guard</span>
+        <strong>需要人工确认</strong>
+        <span>只读保护</span>
       </div>
-      <p>WebPilot blocks login, checkout, file downloads, and form submission by default. Current run only reads public pages.</p>
+      <p>WebPilot 默认阻止登录、结账、下载文件和提交表单。当前运行只读取公开网页，不会替你做高风险操作。</p>
       <div className="approval-actions">
-        <button className="primary-button" onClick={() => onChange("approved")}>Approve</button>
-        <button className="soft-button" onClick={() => onChange("approved")}>Approve once</button>
-        <button className="soft-button" onClick={() => onChange("skipped")}>Skip step</button>
+        <button className="primary-button" onClick={() => onChange("approved")}>确认</button>
+        <button className="soft-button" onClick={() => onChange("approved")}>仅本次确认</button>
+        <button className="soft-button" onClick={() => onChange("skipped")}>跳过步骤</button>
       </div>
     </div>
   );
