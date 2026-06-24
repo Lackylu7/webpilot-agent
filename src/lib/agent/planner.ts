@@ -2,28 +2,34 @@ import type { AgentPlan, ResearchTarget } from "@/lib/types/agent";
 import { knownTarget } from "./seed-data";
 
 const fallbackTargets = ["Notion", "ClickUp", "Linear"];
+const knownNames = ["Notion", "ClickUp", "Linear"];
 
 export function extractTargets(task: string): ResearchTarget[] {
+  const normalized = new Map<string, ResearchTarget>();
+
+  for (const name of knownNames) {
+    if (task.toLowerCase().includes(name.toLowerCase())) {
+      const known = knownTarget(name);
+      if (known) normalized.set(known.name.toLowerCase(), known);
+    }
+  }
+
   const explicit = task.match(/[A-Z][A-Za-z0-9.+-]*(?:\s[A-Z][A-Za-z0-9.+-]*)*/g) ?? [];
   const commaParts = task
-    .split(/[,，、]| and | vs | versus /i)
+    .split(/[,，、]| and | vs | versus | 和 | 与 |及/i)
     .map((part) => part.trim())
     .filter(Boolean);
 
   const candidates = [...explicit, ...commaParts]
-    .map((part) => part.replace(/^(compare|research|analyze|調研|对比|比较|帮我|pricing|price)\s+/i, ""))
-    .map((part) => part.replace(/\s+(pricing|prices|features|定价|价格|功能).*$/i, ""))
+    .map((part) => part.replace(/^(compare|research|analyze|调研|对比|比较|帮我|pricing|price)\s*/i, ""))
+    .map((part) => part.replace(/\s*(pricing|prices|features|定价|价格|功能).*$/i, ""))
     .map((part) => part.trim())
     .filter((part) => part.length >= 2 && part.length <= 32);
 
-  const normalized = new Map<string, ResearchTarget>();
   for (const candidate of candidates) {
     const known = knownTarget(candidate);
-    const name = known?.name ?? candidate;
-    const key = name.toLowerCase();
-    if (!normalized.has(key)) {
-      normalized.set(key, known ?? { name, query: `${name} pricing features` });
-    }
+    if (!known) continue;
+    normalized.set(known.name.toLowerCase(), known);
   }
 
   if (normalized.size < 2) {
@@ -45,15 +51,15 @@ export async function createPlan(task: string): Promise<AgentPlan> {
     goal: task,
     targets,
     steps: [
-      "Parse the research goal and identify comparable targets.",
-      "Resolve likely official pages for each target.",
-      "Open each page in a read-only browser session.",
-      "Extract pricing, plan names, billing model, and notable limits.",
-      "Normalize extracted facts into a comparison table.",
-      "Draft a cited report with key takeaways and source links."
+      "理解调研目标，识别需要对比的对象。",
+      "优先定位每个对象的官网或官方定价页面。",
+      "以只读方式打开网页并读取页面内容。",
+      "抽取价格、套餐名称、计费方式和关键限制。",
+      "把不同来源的信息整理成统一对比表。",
+      "生成包含关键结论和来源链接的中文报告。"
     ],
     riskPolicy:
-      "Read-only browsing only. The agent will not log in, submit forms, purchase items, or download files without explicit approval."
+      "默认只读浏览。Agent 不会登录、提交表单、购买、下载文件或执行破坏性操作，除非用户明确确认。"
   };
 }
 
@@ -75,7 +81,7 @@ async function createPlanWithLlm(task: string): Promise<AgentPlan | null> {
           {
             role: "system",
             content:
-              "You create compact browser research plans. Return only JSON with goal, targets, steps, and riskPolicy. targets is an array of {name, query, officialUrl?}."
+              "你是浏览器调研 Agent 的规划器。请返回中文 JSON，字段包括 goal、targets、steps、riskPolicy。targets 是 {name, query, officialUrl?} 数组。"
           },
           {
             role: "user",
