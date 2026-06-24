@@ -2,7 +2,7 @@ import type { AgentPlan, AgentReport, BrowserSnapshot, ExtractedFact } from "@/l
 
 export function buildReport(plan: AgentPlan, snapshots: BrowserSnapshot[], facts: ExtractedFact[]): AgentReport {
   const products = [...new Set(facts.map((fact) => fact.product))];
-  const title = products.length > 1 ? `Comparison report: ${products.join(" vs ")}` : `Research report: ${plan.goal}`;
+  const title = products.length > 1 ? `对比报告：${products.join(" vs ")}` : `调研报告：${plan.goal}`;
   const grouped = groupByProduct(facts);
   const summary = buildSummary(products, grouped);
   const takeaways = buildTakeaways(products, grouped);
@@ -17,17 +17,17 @@ export function buildReport(plan: AgentPlan, snapshots: BrowserSnapshot[], facts
     "",
     summary,
     "",
-    "## Extracted facts",
+    "## 抽取结果",
     "",
-    "| Product | Plan | Price | Billing | Notes |",
+    "| 产品 | 方案 | 价格 | 计费 | 备注 |",
     "|---|---|---:|---|---|",
     ...facts.map((fact) => `| ${fact.product} | ${fact.plan} | ${fact.price} | ${fact.billing} | ${escapePipe(fact.notes)} |`),
     "",
-    "## Key takeaways",
+    "## 关键结论",
     "",
     ...takeaways.map((takeaway) => `- ${takeaway}`),
     "",
-    "## Sources",
+    "## 来源",
     "",
     ...sources.map((source, index) => `${index + 1}. [${source.target}](${source.url}) - ${source.title}`)
   ].join("\n");
@@ -51,11 +51,11 @@ function groupByProduct(facts: ExtractedFact[]) {
 
 function buildSummary(products: string[], grouped: Record<string, ExtractedFact[]>) {
   if (products.length === 0) {
-    return "WebPilot could not extract enough structured facts. Review the sources and rerun with more specific targets.";
+    return "WebPilot 没有抽取到足够的结构化事实。你可以检查来源，或者换一个更具体的任务重新运行。";
   }
 
   const freePlans = products.filter((product) => grouped[product]?.some((fact) => fact.price === "$0"));
-  return `${products.join(", ")} were reviewed through read-only browser sessions. ${freePlans.length} of ${products.length} targets expose a free or starter option in the extracted data, while paid tiers differ mainly by collaboration controls, automation limits, and enterprise security.`;
+  return `WebPilot 通过只读浏览会话调研了 ${products.join("、")}。抽取结果显示，${products.length} 个对象中有 ${freePlans.length} 个提供免费或入门方案；付费层级的主要差异集中在协作权限、自动化限制和企业安全能力。`;
 }
 
 function buildTakeaways(products: string[], grouped: Record<string, ExtractedFact[]>) {
@@ -63,12 +63,12 @@ function buildTakeaways(products: string[], grouped: Record<string, ExtractedFac
     const plans = grouped[product] ?? [];
     const cheapestPaid = plans.find((fact) => fact.price.startsWith("$") && fact.price !== "$0");
     if (!cheapestPaid) {
-      return `${product} needs manual review for paid pricing because no explicit paid tier was extracted.`;
+      return `${product} 没有抽取到明确的付费套餐，需要人工复核官网定价页。`;
     }
-    return `${product}'s lowest extracted paid tier is ${cheapestPaid.plan} at ${cheapestPaid.price} ${cheapestPaid.billing}.`;
+    return `${product} 抽取到的最低付费套餐是 ${cheapestPaid.plan}，价格为 ${cheapestPaid.price} ${cheapestPaid.billing}。`;
   });
 
-  takeaways.push("Use official pricing pages as primary sources and treat dynamic or sales-led enterprise pricing as lower confidence.");
+  takeaways.push("官网定价页应作为主要来源；动态价格和销售制企业套餐需要降低置信度并人工确认。");
   return takeaways;
 }
 

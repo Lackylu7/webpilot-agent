@@ -13,126 +13,126 @@ type KnownProduct = {
 export const knownProducts: Record<string, KnownProduct> = {
   notion: {
     name: "Notion",
-    query: "Notion pricing",
+    query: "Notion 定价",
     url: "https://www.notion.com/pricing",
-    title: "Notion Pricing",
+    title: "Notion 定价",
     excerpt:
-      "Notion offers a free plan for individuals, plus paid Plus, Business, and Enterprise tiers for teams that need collaboration, admin controls, and security.",
+      "Notion 提供免费版，以及面向团队协作、权限管理和安全控制的 Plus、Business、Enterprise 等付费方案。",
     facts: [
       {
         product: "Notion",
-        plan: "Free",
+        plan: "免费版",
         price: "$0",
-        billing: "/mo",
-        notes: "Personal workspace with limited team collaboration.",
+        billing: "/月",
+        notes: "适合个人工作区，团队协作能力有限。",
         confidence: 0.82
       },
       {
         product: "Notion",
         plan: "Plus",
         price: "$10",
-        billing: "/user/mo",
-        notes: "Small teams; usually lower when billed annually.",
+        billing: "/用户/月",
+        notes: "适合小团队，年付通常更便宜。",
         confidence: 0.78
       },
       {
         product: "Notion",
         plan: "Business",
         price: "$18",
-        billing: "/user/mo",
-        notes: "Advanced team permissions and admin controls.",
+        billing: "/用户/月",
+        notes: "提供更高级的团队权限和管理控制。",
         confidence: 0.78
       },
       {
         product: "Notion",
         plan: "Enterprise",
-        price: "Custom",
-        billing: "annual",
-        notes: "SAML SSO, advanced security, and enterprise support.",
+        price: "定制",
+        billing: "年付",
+        notes: "包含 SAML SSO、高级安全和企业支持。",
         confidence: 0.74
       }
     ]
   },
   clickup: {
     name: "ClickUp",
-    query: "ClickUp pricing",
+    query: "ClickUp 定价",
     url: "https://clickup.com/pricing",
-    title: "ClickUp Pricing",
+    title: "ClickUp 定价",
     excerpt:
-      "ClickUp positions its pricing around a Free Forever tier, Unlimited, Business, and Enterprise plans for teams that want project management and productivity workflows.",
+      "ClickUp 的定价围绕 Free Forever、Unlimited、Business 和 Enterprise 展开，面向项目管理和团队生产力场景。",
     facts: [
       {
         product: "ClickUp",
         plan: "Free Forever",
         price: "$0",
-        billing: "/mo",
-        notes: "Free tier with storage and feature limits.",
+        billing: "/月",
+        notes: "免费层有存储和部分功能限制。",
         confidence: 0.82
       },
       {
         product: "ClickUp",
         plan: "Unlimited",
         price: "$7",
-        billing: "/user/mo",
-        notes: "Unlimited storage and core team features on annual billing.",
+        billing: "/用户/月",
+        notes: "年付价格，包含无限存储和核心团队功能。",
         confidence: 0.78
       },
       {
         product: "ClickUp",
         plan: "Business",
         price: "$12",
-        billing: "/user/mo",
-        notes: "More automation, dashboards, and advanced workspace controls.",
+        billing: "/用户/月",
+        notes: "提供更多自动化、仪表盘和高级工作区控制。",
         confidence: 0.78
       },
       {
         product: "ClickUp",
         plan: "Enterprise",
-        price: "Custom",
-        billing: "annual",
-        notes: "Contract sales, security, and support controls.",
+        price: "定制",
+        billing: "年付",
+        notes: "需要联系销售，包含安全和支持控制。",
         confidence: 0.74
       }
     ]
   },
   linear: {
     name: "Linear",
-    query: "Linear pricing",
+    query: "Linear 定价",
     url: "https://linear.app/pricing",
-    title: "Linear Pricing",
+    title: "Linear 定价",
     excerpt:
-      "Linear focuses on product development teams, with paid plans that add more seats, administration, integrations, and enterprise security controls.",
+      "Linear 面向产品研发团队，付费方案主要增加席位、管理能力、集成和企业安全控制。",
     facts: [
       {
         product: "Linear",
-        plan: "Free",
+        plan: "免费版",
         price: "$0",
-        billing: "/mo",
-        notes: "Starter usage for small teams and personal projects.",
+        billing: "/月",
+        notes: "适合小团队和个人项目的入门使用。",
         confidence: 0.74
       },
       {
         product: "Linear",
         plan: "Basic",
         price: "$8",
-        billing: "/user/mo",
-        notes: "Core issue tracking and product development workflows.",
+        billing: "/用户/月",
+        notes: "提供核心 issue 跟踪和产品研发工作流。",
         confidence: 0.72
       },
       {
         product: "Linear",
         plan: "Business",
         price: "$16",
-        billing: "/user/mo",
-        notes: "Advanced team controls and support features.",
+        billing: "/用户/月",
+        notes: "包含高级团队控制和支持能力。",
         confidence: 0.72
       },
       {
         product: "Linear",
         plan: "Enterprise",
-        price: "Custom",
-        billing: "annual",
-        notes: "SAML SSO, security, and enterprise administration.",
+        price: "定制",
+        billing: "年付",
+        notes: "包含 SAML SSO、安全和企业管理能力。",
         confidence: 0.7
       }
     ]

@@ -3,12 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "WebPilot Agent",
-  description: "Browser workflow agent for web research, structured extraction, and cited reports."
+  description: "面向网页调研、结构化抽取和引用报告生成的浏览器工作流 Agent。"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body>{children}</body>
     </html>
   );

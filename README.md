@@ -2,6 +2,8 @@
 
 WebPilot Agent is a portfolio-grade browser workflow agent. It turns a natural-language web research goal into a plan, runs read-only browser sessions, extracts structured facts, and drafts a cited report with visible execution traces.
 
+The product UI is Chinese-first for local demos and interview walkthroughs.
+
 The first production scenario is competitive research:
 
 ```text
