@@ -59,13 +59,13 @@ The app works without an API key by using deterministic planning and seed extrac
 Desktop:
 
 ```text
-docs/screenshots/webpilot-dashboard-productized-cn.png
+docs/screenshots/webpilot-v2-dashboard-cn.png
 ```
 
 Mobile:
 
 ```text
-docs/screenshots/webpilot-dashboard-productized-mobile-cn.png
+docs/screenshots/webpilot-v2-mobile-cn.png
 ```
 
 ## Optional live LLM mode
@@ -113,6 +113,18 @@ The UI also exposes three run modes:
 
 Saved presets, run mode, and auto-scroll preferences are persisted in browser storage so demos survive refreshes.
 
+## How to demo it
+
+For interview or resume demos, use Demo mode first:
+
+1. Open the app.
+2. Pick the built-in SaaS pricing comparison preset.
+3. Click Run.
+4. Walk through execution trace, browser evidence, extracted facts, source quality, and the deliverable report.
+5. Export Markdown / CSV or copy the portfolio script.
+
+The app does not require a model API for this stable demo path. Add an OpenAI-compatible API key only when you want broader live planning and extraction.
+
 ## Commands
 
 ```bash
@@ -139,5 +151,5 @@ WebPilot is read-only by default. It does not log in, submit forms, purchase ite
 The product UI was designed from this concept image:
 
 ```text
-public/concepts/webpilot-dashboard-concept.png
+public/concepts/webpilot-productized-v2-concept.png
 ```

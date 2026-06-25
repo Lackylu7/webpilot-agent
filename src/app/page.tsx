@@ -1,10 +1,21 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentPlan, AgentReport, AgentRun, BrowserSnapshot, ExtractedFact, RunEvent, RunMode, TimelineItem } from "@/lib/types/agent";
+import type {
+  AgentPlan,
+  AgentReport,
+  AgentRun,
+  BrowserSnapshot,
+  ExtractedFact,
+  RunEvent,
+  RunMode,
+  RunStatus,
+  TimelineItem
+} from "@/lib/types/agent";
 import { formatDuration } from "@/lib/utils/time";
 
-type ModalName = "history" | "presets" | "plan" | "data" | "settings" | "help" | "context" | null;
+type ModalName = "history" | "presets" | "plan" | "data" | "settings" | "help" | "context" | "script" | null;
+type WorkTab = "trace" | "evidence" | "data" | "report";
 
 type Preset = {
   id: string;
@@ -13,36 +24,34 @@ type Preset = {
   description: string;
 };
 
-const defaultTask = "对比 Notion、ClickUp 和 Linear 的定价";
+const defaultTask = "对比 Notion、ClickUp 和 Linear 的定价，整理免费版、基础套餐与团队套餐的价格、计费周期及关键限制，并生成对比报告。";
 
 const builtInPresets: Preset[] = [
   {
     id: "pricing",
     name: "SaaS 定价对比",
     prompt: defaultTask,
-    description: "适合演示浏览、抽取、对比表和报告生成。"
+    description: "最适合简历展示：计划、浏览、抽取、报告四段链路都清楚。"
   },
   {
     id: "features",
-    name: "功能对比表",
-    prompt: "对比 Notion、ClickUp 和 Linear 的核心功能、目标用户和团队协作能力",
-    description: "强调结构化事实抽取和横向分析。"
+    name: "功能矩阵分析",
+    prompt: "对比 Notion、ClickUp 和 Linear 的核心功能、目标用户、协作能力和自动化限制，输出结构化表格。",
+    description: "强调跨页面信息归一化和横向比较。"
   },
   {
     id: "market",
-    name: "市场调研报告",
-    prompt: "调研适合小团队的 AI 会议纪要工具，并输出推荐结论",
-    description: "适合展示调研型报告工作流。"
+    name: "市场研究报告",
+    prompt: "调研适合 10 人以下团队的 AI 会议纪要工具，比较价格、集成、隐私能力和推荐场景。",
+    description: "适合演示开放调研任务和报告生成。"
   },
   {
     id: "finance",
     name: "收费差异分析",
-    prompt: "分析 Stripe 和 Paddle 的 SaaS 收费差异",
+    prompt: "分析 Stripe 和 Paddle 面向 SaaS 产品的收费差异、结算方式、适用场景和风险点。",
     description: "适合展示可替换业务场景。"
   }
 ];
-
-const sampleTasks = builtInPresets.map((preset) => preset.prompt);
 
 const storageKeys = {
   presets: "webpilot.presets",
@@ -50,7 +59,7 @@ const storageKeys = {
   autoScroll: "webpilot.autoScroll"
 };
 
-const statusText: Record<string, string> = {
+const statusText: Record<RunStatus | "idle", string> = {
   idle: "空闲",
   planning: "规划中",
   running: "执行中",
@@ -61,17 +70,30 @@ const statusText: Record<string, string> = {
 };
 
 const sourceText: Record<string, string> = {
-  browser: "浏览器",
+  browser: "真实浏览",
   fetch: "网页读取",
   seed: "演示数据",
   idle: "待命"
 };
+
+const runModes: Array<{ mode: RunMode; title: string; detail: string; icon: string }> = [
+  { mode: "demo", title: "演示模式", detail: "稳定、快速，适合录屏和面试展示。", icon: "▣" },
+  { mode: "smart", title: "智能模式", detail: "自动选择实时网页或演示兜底。", icon: "✦" },
+  { mode: "live", title: "实时模式", detail: "优先抓取真实网页，失败后降级。", icon: "◎" }
+];
 
 const runModeText: Record<RunMode, string> = {
   smart: "智能",
   demo: "演示",
   live: "实时"
 };
+
+const workTabs: Array<{ id: WorkTab; label: string }> = [
+  { id: "trace", label: "执行轨迹" },
+  { id: "evidence", label: "浏览证据" },
+  { id: "data", label: "抽取数据" },
+  { id: "report", label: "交付报告" }
+];
 
 export default function Home() {
   const [task, setTask] = useState(defaultTask);
@@ -89,21 +111,33 @@ export default function Home() {
   const [modal, setModal] = useState<ModalName>(null);
   const [toast, setToast] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
-  const [runMode, setRunMode] = useState<RunMode>("smart");
+  const [runMode, setRunMode] = useState<RunMode>("demo");
   const [historyQuery, setHistoryQuery] = useState("");
   const [newPresetName, setNewPresetName] = useState("");
   const [storageReady, setStorageReady] = useState(false);
+  const [selectedSnapshotUrl, setSelectedSnapshotUrl] = useState("");
+  const [workTab, setWorkTab] = useState<WorkTab>("trace");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const activeSnapshot = snapshots.at(-1);
   const activeStage = run?.activeStage ?? "plan";
   const status = run?.status ?? "idle";
   const completedSteps = timeline.filter((item) => item.status === "completed").length;
-  const visibleFacts = useMemo(() => facts.slice(0, 12), [facts]);
-  const sourceCount = report?.sources.length ?? snapshots.length;
+  const activeSnapshot = useMemo(
+    () => snapshots.find((snapshot) => snapshot.url === selectedSnapshotUrl) ?? snapshots.at(-1),
+    [selectedSnapshotUrl, snapshots]
+  );
+  const visibleFacts = useMemo(() => facts.slice(0, 10), [facts]);
+  const avgConfidence = useMemo(() => averageConfidence(facts), [facts]);
+  const evidenceQuality = useMemo(() => buildEvidenceQuality(snapshots, facts), [snapshots, facts]);
+  const portfolioScript = useMemo(
+    () => buildPortfolioScript({ run, report, facts, snapshots, runMode }),
+    [run, report, facts, snapshots, runMode]
+  );
   const progress = progressFromStage(activeStage, status);
+  const plan = run?.plan;
 
   const filteredHistory = useMemo(() => {
     const query = historyQuery.trim().toLowerCase();
@@ -126,7 +160,7 @@ export default function Home() {
       const savedAutoScroll = window.localStorage.getItem(storageKeys.autoScroll);
       if (savedAutoScroll === "true" || savedAutoScroll === "false") setAutoScroll(savedAutoScroll === "true");
     } catch {
-      // Local settings are optional; a corrupt browser storage entry should never block the app.
+      // Local settings are optional. Bad browser storage should not block the product.
     } finally {
       setStorageReady(true);
     }
@@ -171,13 +205,16 @@ export default function Home() {
       const data = (await response.json()) as { runs?: AgentRun[] };
       setHistory(data.runs ?? []);
     } catch {
-      // History is a convenience panel. The core run path should not fail because local history is unavailable.
+      // History is a convenience panel. The core run path should still work.
     }
   }
 
   async function startRun(event?: FormEvent) {
     event?.preventDefault();
     if (!task.trim() || isRunning) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
     setIsRunning(true);
     setError(null);
     setRun(null);
@@ -186,6 +223,8 @@ export default function Home() {
     setSnapshots([]);
     setReport(null);
     setApprovalState("waiting");
+    setSelectedSnapshotUrl("");
+    setWorkTab("trace");
     setModal(null);
 
     try {
@@ -193,7 +232,8 @@ export default function Home() {
       const response = await fetch("/api/runs/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task: taskWithContext, runMode })
+        body: JSON.stringify({ task: taskWithContext, runMode }),
+        signal: controller.signal
       });
 
       if (!response.ok || !response.body) {
@@ -219,8 +259,13 @@ export default function Home() {
         }
       }
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "运行失败，请稍后重试。");
+      if (controller.signal.aborted) {
+        showToast("已停止当前运行。");
+      } else {
+        setError(runError instanceof Error ? runError.message : "运行失败，请稍后重试。");
+      }
     } finally {
+      abortRef.current = null;
       setIsRunning(false);
       await loadHistory();
     }
@@ -236,6 +281,7 @@ export default function Home() {
     }
     if (event.type === "snapshot") {
       setSnapshots((current) => [...current, event.snapshot]);
+      setSelectedSnapshotUrl(event.snapshot.url);
     }
     if (event.type === "facts") {
       setFacts(event.facts);
@@ -247,8 +293,10 @@ export default function Home() {
       setRun(event.run);
       setTimeline(event.run.timeline);
       setSnapshots(event.run.snapshots);
+      setSelectedSnapshotUrl(event.run.snapshots.at(-1)?.url ?? "");
       setFacts(event.run.facts);
       setReport(event.run.report ?? null);
+      setWorkTab("trace");
       setHistory((current) => [event.run, ...current.filter((item) => item.id !== event.run.id)].slice(0, 20));
       showToast("任务已完成，报告和数据已保存。");
     }
@@ -258,22 +306,30 @@ export default function Home() {
     }
   }
 
+  function stopRun() {
+    abortRef.current?.abort();
+  }
+
   function newTask() {
+    abortRef.current?.abort();
     setTask("");
     setContext("");
     setRun(null);
     setTimeline([]);
     setFacts([]);
     setSnapshots([]);
+    setSelectedSnapshotUrl("");
     setReport(null);
     setError(null);
     setApprovalState("waiting");
+    setWorkTab("trace");
     setModal(null);
     setTimeout(() => textareaRef.current?.focus(), 50);
   }
 
   function applyPreset(preset: Preset) {
     setTask(preset.prompt);
+    setContext("");
     setModal(null);
     showToast(`已套用预设：${preset.name}`);
     setTimeout(() => textareaRef.current?.focus(), 50);
@@ -295,7 +351,7 @@ export default function Home() {
       id: `preset-${Date.now()}`,
       name,
       prompt: normalizedTask,
-      description: context.trim() ? `包含补充上下文：${context.trim().slice(0, 24)}...` : "从当前任务保存。"
+      description: context.trim() ? `包含上下文：${context.trim().slice(0, 26)}...` : "从当前任务保存，可用于下次演示。"
     };
     setPresets((current) => [preset, ...current]);
     setNewPresetName("");
@@ -317,24 +373,31 @@ export default function Home() {
     showToast("已恢复内置预设。");
   }
 
+  async function clearHistory() {
+    if (!window.confirm("确认清空本地任务历史吗？这只会删除本机演示记录。")) return;
+    const response = await fetch("/api/tasks", { method: "DELETE" });
+    if (!response.ok) {
+      showToast("清空历史失败，请稍后重试。");
+      return;
+    }
+    setHistory([]);
+    showToast("本地任务历史已清空。");
+  }
+
   function loadRun(selectedRun: AgentRun) {
+    abortRef.current?.abort();
     setRun(selectedRun);
     setTask(selectedRun.task);
     setTimeline(selectedRun.timeline);
     setSnapshots(selectedRun.snapshots);
+    setSelectedSnapshotUrl(selectedRun.snapshots.at(-1)?.url ?? "");
     setFacts(selectedRun.facts);
     setReport(selectedRun.report ?? null);
     setError(selectedRun.error ?? null);
+    setApprovalState("approved");
+    setWorkTab(selectedRun.report ? "report" : "trace");
     setModal(null);
     showToast("已载入历史任务。");
-  }
-
-  function cycleRunMode() {
-    setRunMode((current) => {
-      const next = current === "smart" ? "demo" : current === "demo" ? "live" : "smart";
-      showToast(`运行模式已切换为：${runModeText[next]}`);
-      return next;
-    });
   }
 
   async function copyReport() {
@@ -342,11 +405,19 @@ export default function Home() {
       showToast("还没有报告可复制。");
       return;
     }
+    await copyText(report.markdown, "报告 Markdown 已复制。");
+  }
+
+  async function copyScript() {
+    await copyText(portfolioScript, "简历展示脚本已复制。");
+  }
+
+  async function copyText(value: string, successMessage: string) {
     try {
-      await navigator.clipboard.writeText(report.markdown);
-      showToast("报告 Markdown 已复制。");
+      await navigator.clipboard.writeText(value);
+      showToast(successMessage);
     } catch {
-      showToast("当前浏览器不允许直接复制，可以使用导出 MD。");
+      showToast("当前浏览器不允许直接复制，可以使用导出文件。");
     }
   }
 
@@ -389,25 +460,27 @@ export default function Home() {
 
   function showToast(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 2200);
+    window.setTimeout(() => setToast(""), 2400);
   }
 
-  const plan = run?.plan;
-
   return (
-    <main className="shell">
+    <main className="app-shell">
       {toast && <div className="toast">{toast}</div>}
+
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">W</span>
           <strong>WebPilot Agent</strong>
           <span className="divider" />
-          <span>让网页自己干活</span>
+          <span>浏览器工作流 Agent</span>
+          <em>本地部署</em>
         </div>
         <div className="top-actions">
           <span className="online-dot" />
           <span>Agent 在线</span>
-          <button className="soft-button" onClick={cycleRunMode}>运行模式：{runModeText[runMode]}</button>
+          <button className="mode-pill" onClick={() => setModal("settings")}>
+            {runModeText[runMode]}模式
+          </button>
           <button className="icon-button" aria-label="帮助" onClick={() => setModal("help")}>?</button>
           <button className="soft-button" onClick={() => setModal("settings")}>设置</button>
           <span className="avatar">AK</span>
@@ -415,172 +488,197 @@ export default function Home() {
       </header>
 
       <aside className="sidebar">
-        <section>
-          <p className="section-label">新任务</p>
-          <button className="new-task" onClick={newTask}>+ 新建任务 <span>Ctrl K</span></button>
-        </section>
+        <button className="new-task" onClick={newTask}>+ 新建任务 <span>Ctrl K</span></button>
 
-        <section>
-          <p className="section-label">任务历史</p>
-          <div className="history-list">
-            {(history.length > 0 ? history.slice(0, 4) : sampleTasks).map((item, index) => {
-              const isRun = typeof item !== "string";
-              const label = isRun ? item.task.split("\n")[0] : item;
-              const meta = isRun ? statusText[item.status] ?? item.status : index === 0 ? "示例任务" : `${index + 1} 小时前`;
-              return (
-                <button
-                  key={isRun ? item.id : item}
-                  className={`history-item ${index === 0 ? "active" : ""}`}
-                  onClick={() => (isRun ? loadRun(item) : setTask(item))}
-                >
-                  <span>{label}</span>
-                  <small>{meta}</small>
-                </button>
-              );
-            })}
+        <NavGroup
+          title="任务"
+          items={[
+            ["▣", "全部任务", `${history.length}`],
+            ["♙", "我创建的", ""],
+            ["☆", "收藏夹", ""],
+            ["✓", "已完成", `${history.filter((item) => item.status === "completed").length}`]
+          ]}
+        />
+
+        <section className="side-section">
+          <div className="side-heading">
+            <span>模板与示例</span>
+            <button onClick={() => setModal("presets")}>管理</button>
           </div>
-          <button className="link-button" onClick={() => setModal("history")}>查看全部历史</button>
-        </section>
-
-        <section>
-          <p className="section-label">保存的预设</p>
           <div className="preset-list">
             {presets.slice(0, 4).map((preset) => (
               <button key={preset.id} onClick={() => applyPreset(preset)} className="preset-item">
-                <span className="preset-icon">□</span>
-                {preset.name}
+                <span>□</span>
+                <strong>{preset.name}</strong>
               </button>
             ))}
           </div>
-          <button className="link-button" onClick={() => setModal("presets")}>管理预设</button>
         </section>
+
+        <section className="side-section">
+          <div className="side-heading">
+            <span>运行记录</span>
+            <button onClick={() => setModal("history")}>查看</button>
+          </div>
+          <div className="run-stats">
+            <MetricPill label="今日运行" value={`${history.length}`} />
+            <MetricPill label="失败任务" value={`${history.filter((item) => item.status === "failed").length}`} />
+          </div>
+        </section>
+
+        <div className="sidebar-footer">
+          <button onClick={() => setModal("settings")}>⚙ 设置</button>
+          <button onClick={() => setModal("help")}>? 关于</button>
+          <span>v2.0 本地版</span>
+        </div>
       </aside>
 
       <section className="workspace">
-        <form className="composer panel" onSubmit={startRun}>
-          <div className="composer-head">
-            <span>自然语言任务</span>
-            <span>{context.trim() ? "已添加上下文" : "可选上下文"}</span>
+        <form className="command-card panel" onSubmit={startRun}>
+          <div className="command-head">
+            <div>
+              <span>创建浏览器工作流任务</span>
+              <strong>{context.trim() ? "已添加上下文" : "可添加约束条件"}</strong>
+            </div>
+            <button type="button" onClick={() => setTask(defaultTask)}>恢复默认任务</button>
           </div>
+
           <textarea
             ref={textareaRef}
             value={task}
             onChange={(event) => setTask(event.target.value)}
             aria-label="浏览器工作流任务"
-            placeholder="让 WebPilot 调研市场、对比产品，或者从网页里抽取结构化信息..."
+            maxLength={1000}
+            placeholder="例如：对比 Notion、ClickUp 和 Linear 的定价，输出带来源的中文报告..."
           />
-          <div className="composer-footer">
-            <button type="button" className="text-control" onClick={cycleRunMode}>
-              模式：{runModeText[runMode]}
-            </button>
-            <button type="button" className="text-control" onClick={() => setModal("context")}>添加上下文</button>
-            <button type="button" className="soft-button" onClick={saveCurrentAsPreset}>保存为预设</button>
-            <button className="primary-button" aria-label="运行工作流" disabled={isRunning || !task.trim()}>
-              {isRunning ? "运行中..." : "运行"}
-            </button>
+
+          <div className="command-footer">
+            <button type="button" className="ghost-button" onClick={() => setModal("context")}>添加上下文</button>
+            <button type="button" className="ghost-button" onClick={saveCurrentAsPreset}>保存为预设</button>
+            <label className="read-only-toggle">
+              <span />
+              只读浏览，不登录
+            </label>
+            {isRunning ? (
+              <button type="button" className="danger-button" onClick={stopRun}>停止</button>
+            ) : (
+              <button className="primary-button" aria-label="运行工作流" disabled={!task.trim()}>运行</button>
+            )}
           </div>
         </form>
 
-        <div className="stage-strip panel">
-          <StageStep name="规划" detail="生成浏览计划" active={activeStage === "plan"} done={completedSteps > 0} />
-          <StageStep name="执行" detail="访问网页" active={activeStage === "run"} done={snapshots.length > 0} />
-          <StageStep name="人工确认" detail="只读安全边界" active={activeStage === "approval"} warning />
-          <StageStep name="抽取" detail="整理事实" active={activeStage === "extract"} done={facts.length > 0} />
-          <StageStep name="报告" detail="引用来源" active={activeStage === "report"} done={Boolean(report)} />
-        </div>
-
-        <div className="progress-strip">
-          <span style={{ width: `${progress}%` }} />
-        </div>
-
-        <div className="center-grid">
-          <section className="panel timeline-panel">
-            <PanelTitle title="执行时间线" meta={statusText[status] ?? status} />
-            <div className="timeline">
-              {timeline.length === 0 ? (
-                <EmptyState title="准备就绪" detail="点击运行后，你会看到 WebPilot 规划、浏览、抽取和生成报告的全过程。" />
-              ) : (
-                timeline.map((item) => <TimelineRow key={item.id} item={item} />)
-              )}
-              <div ref={timelineEndRef} />
-            </div>
-            <div className="panel-footer">
-              <button className={`text-control ${autoScroll ? "selected" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
-                自动滚动 {autoScroll ? "开" : "关"}
-              </button>
-              <button className="soft-button" onClick={() => setModal("plan")} disabled={!plan}>查看计划</button>
-            </div>
-          </section>
-
-          <section className="panel browser-panel">
-            <PanelTitle title="浏览器 / 会话预览" meta={sourceText[activeSnapshot?.sourceType ?? "idle"]} />
-            <div className="browser-address">
-              <button onClick={openActiveSource} aria-label="打开当前来源">↗</button>
-              <span>{activeSnapshot?.url ?? "等待浏览器会话启动..."}</span>
-              <button onClick={() => void startRun()} disabled={isRunning || !task.trim()} aria-label="重新运行">↻</button>
-            </div>
-            <div className="browser-preview">
-              <div className="browser-page">
-                <div className="mini-nav">
-                  <strong>{activeSnapshot?.target ?? "WebPilot"}</strong>
-                  <span>{activeSnapshot?.title ?? "只读浏览会话"}</span>
-                </div>
-                <h3>{activeSnapshot?.title ?? "还没有捕获页面"}</h3>
-                <p>{activeSnapshot?.excerpt ?? "浏览器预览会展示当前来源、页面标题和 Agent 读取到的网页摘要。"}</p>
-              </div>
-            </div>
-            <ApprovalCard state={approvalState} onChange={setApprovalState} showToast={showToast} />
-          </section>
-        </div>
-      </section>
-
-      <aside className="insights">
-        <section className="panel facts-panel">
-          <PanelTitle title="抽取结果" meta={`${facts.length} 行`} />
-          <div className="metric-row">
-            <Metric label="来源" value={`${sourceCount}`} />
-            <Metric label="字段" value={`${facts.length * 5}`} />
-            <Metric label="平均置信度" value={facts.length ? `${Math.round((facts.reduce((sum, fact) => sum + fact.confidence, 0) / facts.length) * 100)}%` : "--"} />
+        <section className="mode-card panel">
+          <div className="panel-title compact">
+            <strong>运行模式</strong>
+            <span>{runModeText[runMode]}</span>
           </div>
-          <FactTable facts={visibleFacts} emptyText="还没有抽取到事实。" />
-          <div className="split-actions">
-            <button className="soft-button" onClick={() => setModal("data")} disabled={facts.length === 0}>完整数据表</button>
-            <button className="soft-button" onClick={downloadCsv} disabled={facts.length === 0}>导出 CSV</button>
+          <div className="mode-grid">
+            {runModes.map((item) => (
+              <button
+                key={item.mode}
+                className={`mode-option ${runMode === item.mode ? "active" : ""}`}
+                onClick={() => setRunMode(item.mode)}
+              >
+                <span>{item.icon}</span>
+                <strong>{item.title}</strong>
+                <small>{item.detail}</small>
+              </button>
+            ))}
           </div>
         </section>
 
-        <section className="panel report-panel">
-          <PanelTitle title="最终报告" meta="MD" />
-          {report ? (
-            <ReportView report={report} />
-          ) : (
-            <EmptyState title="报告会显示在这里" detail="WebPilot 会保留每个来源链接，并把抽取结果整理成可复制的报告。" />
-          )}
-          {error && <p className="error">{error}</p>}
-          <div className="report-actions">
-            <button className="soft-button" disabled={!report} onClick={copyReport}>复制报告</button>
-            <button className="soft-button" disabled={!report} onClick={downloadMarkdown}>导出 MD</button>
-            <button className="soft-button" disabled={!activeSnapshot} onClick={openActiveSource}>打开来源 ↗</button>
+        <section className="stage-card panel">
+          <StageStep name="规划" detail="生成浏览计划" active={activeStage === "plan"} done={completedSteps > 0} />
+          <StageStep name="执行" detail="访问网页" active={activeStage === "run"} done={snapshots.length > 0} />
+          <StageStep name="确认" detail="只读安全边界" active={activeStage === "approval"} warning={approvalState === "waiting"} done={approvalState !== "waiting"} />
+          <StageStep name="抽取" detail="整理事实" active={activeStage === "extract"} done={facts.length > 0} />
+          <StageStep name="报告" detail="引用来源" active={activeStage === "report"} done={Boolean(report)} />
+          <div className="progress-strip"><span style={{ width: `${progress}%` }} /></div>
+        </section>
+
+        <section className="workbench panel">
+          <div className="work-tabs">
+            {workTabs.map((tab) => (
+              <button key={tab.id} className={workTab === tab.id ? "active" : ""} onClick={() => setWorkTab(tab.id)}>
+                {tab.label}
+              </button>
+            ))}
+            <span>任务状态：{statusText[status]}</span>
+          </div>
+          <div className={`work-grid ${workTab === "trace" ? "" : "single-tab"}`}>
+            <TimelinePanel
+              timeline={timeline}
+              autoScroll={autoScroll}
+              setAutoScroll={setAutoScroll}
+              status={status}
+              plan={plan}
+              onViewPlan={() => setModal("plan")}
+              endRef={timelineEndRef}
+              hidden={workTab !== "trace"}
+            />
+            <EvidencePanel
+              snapshots={snapshots}
+              activeSnapshot={activeSnapshot}
+              setActiveSnapshot={setSelectedSnapshotUrl}
+              sourceLabel={sourceText[activeSnapshot?.sourceType ?? "idle"]}
+              onOpenSource={openActiveSource}
+              approvalState={approvalState}
+              setApprovalState={setApprovalState}
+              showToast={showToast}
+              hidden={workTab !== "trace" && workTab !== "evidence"}
+            />
+            <DataPanel facts={facts} visibleFacts={visibleFacts} avgConfidence={avgConfidence} onFullData={() => setModal("data")} onDownloadCsv={downloadCsv} hidden={workTab !== "data"} />
+            <ReportPanel report={report} onCopy={copyReport} onDownload={downloadMarkdown} onOpenSource={openActiveSource} hidden={workTab !== "report"} />
+          </div>
+        </section>
+
+        <section className="script-card panel">
+          <div>
+            <strong>简历展示脚本（如何讲这个项目）</strong>
+            <p>把“为什么做、怎么跑、怎么验证、怎么导出”压缩成 4 句话，方便面试时直接讲。</p>
+          </div>
+          <ol>
+            {portfolioScript.split("\n").slice(0, 4).map((line) => (
+              <li key={line}>{line.replace(/^\d+\.\s*/, "")}</li>
+            ))}
+          </ol>
+          <div className="script-actions">
+            <button className="soft-button" onClick={copyScript}>复制脚本</button>
+            <button className="soft-button" onClick={() => setModal("script")}>查看完整</button>
+          </div>
+        </section>
+      </section>
+
+      <aside className="delivery">
+        <DataPanel facts={facts} visibleFacts={visibleFacts} avgConfidence={avgConfidence} onFullData={() => setModal("data")} onDownloadCsv={downloadCsv} />
+        <ReportPanel report={report} onCopy={copyReport} onDownload={downloadMarkdown} onOpenSource={openActiveSource} />
+        <QualityPanel quality={evidenceQuality} snapshots={snapshots} />
+        <section className="panel export-card">
+          <PanelTitle title="导出与分享" meta="本地文件" />
+          <div className="export-grid">
+            <button onClick={downloadMarkdown} disabled={!report}>导出 MD</button>
+            <button onClick={downloadCsv} disabled={facts.length === 0}>导出 CSV</button>
+            <button onClick={copyScript}>复制展示脚本</button>
           </div>
         </section>
       </aside>
 
+      {error && <div className="error-banner">{error}</div>}
+
       {modal === "history" && (
         <Modal title="全部历史任务" onClose={() => setModal(null)}>
-          <input
-            className="field"
-            value={historyQuery}
-            onChange={(event) => setHistoryQuery(event.target.value)}
-            placeholder="搜索历史任务..."
-          />
+          <input className="field" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="搜索历史任务..." />
+          <div className="modal-actions compact">
+            <button className="soft-button danger" onClick={() => void clearHistory()} disabled={history.length === 0}>清空历史</button>
+          </div>
           <div className="modal-list">
             {filteredHistory.length === 0 ? (
               <EmptyState title="暂无历史" detail="运行一次任务后，这里会显示可回看的历史记录。" />
             ) : (
               filteredHistory.map((item) => (
                 <button key={item.id} className="modal-row" onClick={() => loadRun(item)}>
-                  <strong>{item.task.split("\n")[0]}</strong>
-                  <span>{statusText[item.status] ?? item.status} · {item.facts.length} 行数据 · {item.report?.sources.length ?? 0} 个来源</span>
+                  <strong>{taskTitle(item.task)}</strong>
+                  <span>{statusText[item.status]} · {item.facts.length} 行数据 · {item.report?.sources.length ?? 0} 个来源</span>
                 </button>
               ))
             )}
@@ -604,13 +702,7 @@ export default function Home() {
                   <strong>{preset.name}</strong>
                   <span>{preset.description}</span>
                 </button>
-                <button
-                  className="soft-button danger"
-                  onClick={() => deletePreset(preset.id)}
-                  disabled={!preset.id.startsWith("preset-")}
-                >
-                  删除
-                </button>
+                <button className="soft-button danger" onClick={() => deletePreset(preset.id)} disabled={!preset.id.startsWith("preset-")}>删除</button>
               </div>
             ))}
           </div>
@@ -649,9 +741,11 @@ export default function Home() {
       {modal === "settings" && (
         <Modal title="运行设置" onClose={() => setModal(null)}>
           <div className="settings-grid">
-            <Setting label="运行模式" value={runModeText[runMode]} action="切换" onClick={cycleRunMode} />
-            <Setting label="浏览权限" value="只读" action="查看说明" onClick={() => setModal("help")} />
-            <Setting label="演示稳定性" value="已启用种子兜底" action="知道了" onClick={() => showToast("真实浏览失败时会回退到演示数据。")} />
+            {runModes.map((item) => (
+              <Setting key={item.mode} label={item.title} value={item.detail} action={runMode === item.mode ? "已选择" : "选择"} onClick={() => setRunMode(item.mode)} />
+            ))}
+            <Setting label="自动滚动" value={autoScroll ? "执行轨迹会自动跟随最新步骤" : "手动查看执行轨迹"} action={autoScroll ? "关闭" : "开启"} onClick={() => setAutoScroll((value) => !value)} />
+            <Setting label="浏览权限" value="只读，不登录、不付款、不提交表单" action="查看说明" onClick={() => setModal("help")} />
           </div>
         </Modal>
       )}
@@ -659,15 +753,43 @@ export default function Home() {
       {modal === "help" && (
         <Modal title="怎么使用 WebPilot" onClose={() => setModal(null)}>
           <div className="help-copy">
-            <p>1. 在任务框里输入要调研的网页目标，例如“对比 Notion、ClickUp 和 Linear 的定价”。</p>
-            <p>2. 可选：添加上下文，限定来源、输出格式或关注点。</p>
-            <p>3. 点击运行，查看时间线、浏览器预览、抽取表和最终报告。</p>
-            <p>4. 报告可以复制为 Markdown，数据可以导出 CSV，来源可以新窗口打开。</p>
+            <p>1. 输入网页调研任务，例如“对比 Notion、ClickUp 和 Linear 的定价”。</p>
+            <p>2. 选择演示、智能或实时模式；演示模式最适合录屏和面试。</p>
+            <p>3. 点击运行，观察执行轨迹、浏览证据、抽取数据和交付报告。</p>
+            <p>4. 报告可以导出 Markdown，结构化数据可以导出 CSV。</p>
             <p>安全边界：当前版本默认只读，不登录、不提交表单、不下载文件、不付款。</p>
           </div>
         </Modal>
       )}
+
+      {modal === "script" && (
+        <Modal title="简历展示脚本" onClose={() => setModal(null)}>
+          <div className="script-full">
+            {portfolioScript.split("\n").map((line) => <p key={line}>{line}</p>)}
+          </div>
+          <div className="modal-actions">
+            <button className="primary-button" onClick={copyScript}>复制脚本</button>
+          </div>
+        </Modal>
+      )}
     </main>
+  );
+}
+
+function NavGroup({ title, items }: { title: string; items: Array<[string, string, string]> }) {
+  return (
+    <section className="side-section">
+      <p className="section-label">{title}</p>
+      <div className="nav-list">
+        {items.map(([icon, label, value], index) => (
+          <button key={label} className={index === 0 ? "active" : ""}>
+            <span>{icon}</span>
+            <strong>{label}</strong>
+            {value && <em>{value}</em>}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -692,6 +814,46 @@ function PanelTitle({ title, meta }: { title: string; meta?: string }) {
   );
 }
 
+function TimelinePanel({
+  timeline,
+  autoScroll,
+  setAutoScroll,
+  status,
+  plan,
+  onViewPlan,
+  endRef,
+  hidden
+}: {
+  timeline: TimelineItem[];
+  autoScroll: boolean;
+  setAutoScroll: (value: boolean | ((current: boolean) => boolean)) => void;
+  status: RunStatus | "idle";
+  plan?: AgentPlan;
+  onViewPlan: () => void;
+  endRef: React.RefObject<HTMLDivElement | null>;
+  hidden?: boolean;
+}) {
+  return (
+    <section className={`timeline-panel sub-panel ${hidden ? "tab-hidden" : ""}`}>
+      <PanelTitle title="执行轨迹" meta={statusText[status]} />
+      <div className="timeline">
+        {timeline.length === 0 ? (
+          <EmptyState title="准备就绪" detail="点击运行后，你会看到规划、浏览、抽取和生成报告的全过程。" />
+        ) : (
+          timeline.map((item) => <TimelineRow key={item.id} item={item} />)
+        )}
+        <div ref={endRef} />
+      </div>
+      <div className="panel-footer">
+        <button className={`text-control ${autoScroll ? "selected" : ""}`} onClick={() => setAutoScroll((value) => !value)}>
+          自动滚动 {autoScroll ? "开" : "关"}
+        </button>
+        <button className="soft-button" onClick={onViewPlan} disabled={!plan}>查看计划</button>
+      </div>
+    </section>
+  );
+}
+
 function TimelineRow({ item }: { item: TimelineItem }) {
   return (
     <div className={`timeline-row ${item.status}`}>
@@ -707,6 +869,137 @@ function TimelineRow({ item }: { item: TimelineItem }) {
   );
 }
 
+function EvidencePanel({
+  snapshots,
+  activeSnapshot,
+  setActiveSnapshot,
+  sourceLabel,
+  onOpenSource,
+  approvalState,
+  setApprovalState,
+  showToast,
+  hidden
+}: {
+  snapshots: BrowserSnapshot[];
+  activeSnapshot?: BrowserSnapshot;
+  setActiveSnapshot: (url: string) => void;
+  sourceLabel: string;
+  onOpenSource: () => void;
+  approvalState: "waiting" | "approved" | "skipped";
+  setApprovalState: (state: "waiting" | "approved" | "skipped") => void;
+  showToast: (message: string) => void;
+  hidden?: boolean;
+}) {
+  return (
+    <section className={`evidence-panel sub-panel ${hidden ? "tab-hidden" : ""}`}>
+      <PanelTitle title="浏览证据" meta={sourceLabel} />
+      <div className="browser-address">
+        <button onClick={onOpenSource} aria-label="打开当前来源">↗</button>
+        <span>{activeSnapshot?.url ?? "等待浏览器会话启动..."}</span>
+        <button onClick={onOpenSource} disabled={!activeSnapshot} aria-label="新窗口打开">□</button>
+      </div>
+      <div className="browser-preview">
+        <div className="browser-page">
+          <div className="mini-nav">
+            <strong>{activeSnapshot?.target ?? "WebPilot"}</strong>
+            <span>{activeSnapshot?.title ?? "只读浏览会话"}</span>
+          </div>
+          <h3>{activeSnapshot?.title ?? "还没有捕获页面"}</h3>
+          <p>{activeSnapshot?.excerpt ?? "浏览器预览会展示当前来源、页面标题和 Agent 读取到的网页摘要。"}</p>
+        </div>
+      </div>
+      <div className="evidence-strip">
+        {snapshots.length === 0 ? (
+          <span>运行后会显示页面证据快照。</span>
+        ) : (
+          snapshots.map((snapshot, index) => (
+            <button key={`${snapshot.url}-${index}`} className={activeSnapshot?.url === snapshot.url ? "active" : ""} onClick={() => setActiveSnapshot(snapshot.url)}>
+              <strong>{snapshot.target}</strong>
+              <small>{sourceText[snapshot.sourceType]}</small>
+            </button>
+          ))
+        )}
+      </div>
+      <ApprovalCard state={approvalState} onChange={setApprovalState} showToast={showToast} />
+    </section>
+  );
+}
+
+function DataPanel({
+  facts,
+  visibleFacts,
+  avgConfidence,
+  onFullData,
+  onDownloadCsv,
+  hidden
+}: {
+  facts: ExtractedFact[];
+  visibleFacts: ExtractedFact[];
+  avgConfidence: string;
+  onFullData: () => void;
+  onDownloadCsv: () => void;
+  hidden?: boolean;
+}) {
+  return (
+    <section className={`facts-panel panel ${hidden ? "tab-hidden" : ""}`}>
+      <PanelTitle title="抽取数据" meta={`${facts.length} 行`} />
+      <div className="metric-row">
+        <MetricCard label="来源" value={`${new Set(facts.map((fact) => fact.sourceUrl)).size || 0}`} />
+        <MetricCard label="字段" value={`${facts.length * 5}`} />
+        <MetricCard label="平均置信度" value={avgConfidence} />
+      </div>
+      <FactTable facts={visibleFacts} emptyText="还没有抽取到事实。" />
+      <div className="split-actions">
+        <button className="soft-button" onClick={onFullData} disabled={facts.length === 0}>完整数据表</button>
+        <button className="soft-button" onClick={onDownloadCsv} disabled={facts.length === 0}>导出 CSV</button>
+      </div>
+    </section>
+  );
+}
+
+function ReportPanel({
+  report,
+  onCopy,
+  onDownload,
+  onOpenSource,
+  hidden
+}: {
+  report: AgentReport | null;
+  onCopy: () => void;
+  onDownload: () => void;
+  onOpenSource: () => void;
+  hidden?: boolean;
+}) {
+  return (
+    <section className={`report-panel panel ${hidden ? "tab-hidden" : ""}`}>
+      <PanelTitle title="交付报告" meta="MD" />
+      {report ? <ReportView report={report} /> : <EmptyState title="报告会显示在这里" detail="WebPilot 会把抽取数据整理成可复制、可导出的 Markdown 报告。" />}
+      <div className="report-actions">
+        <button className="soft-button" disabled={!report} onClick={onCopy}>复制报告</button>
+        <button className="soft-button" disabled={!report} onClick={onDownload}>导出 MD</button>
+        <button className="soft-button" disabled={!report} onClick={onOpenSource}>打开来源 ↗</button>
+      </div>
+    </section>
+  );
+}
+
+function QualityPanel({ quality, snapshots }: { quality: ReturnType<typeof buildEvidenceQuality>; snapshots: BrowserSnapshot[] }) {
+  return (
+    <section className="panel quality-panel">
+      <PanelTitle title="来源质量评估" meta={quality.label} />
+      <div className="quality-score">
+        <strong>{quality.score}%</strong>
+        <span>{quality.summary}</span>
+      </div>
+      <div className="quality-grid">
+        <MetricPill label="官方/演示来源" value={`${quality.seedOrOfficial}/${Math.max(snapshots.length, 1)}`} />
+        <MetricPill label="抓取成功率" value={`${quality.captureRate}%`} />
+        <MetricPill label="数据一致性" value={quality.consistency} />
+      </div>
+    </section>
+  );
+}
+
 function ApprovalCard({
   state,
   onChange,
@@ -717,18 +1010,29 @@ function ApprovalCard({
   showToast: (message: string) => void;
 }) {
   const stateText = state === "approved" ? "已确认" : state === "skipped" ? "已跳过" : "等待确认";
+  const resolved = state !== "waiting";
   return (
     <div className={`approval-card ${state}`}>
       <div className="approval-head">
         <strong>需要人工确认</strong>
         <span>{stateText}</span>
       </div>
-      <p>WebPilot 默认阻止登录、结账、下载文件和提交表单。当前运行只读取公开网页，不会替你做高风险操作。</p>
-      <div className="approval-actions">
-        <button className="primary-button" onClick={() => { onChange("approved"); showToast("已确认只读安全策略。"); }}>确认</button>
-        <button className="soft-button" onClick={() => { onChange("approved"); showToast("本次运行已确认。"); }}>仅本次确认</button>
-        <button className="soft-button" onClick={() => { onChange("skipped"); showToast("已跳过确认卡片。"); }}>跳过步骤</button>
-      </div>
+      <p>
+        {resolved
+          ? state === "approved"
+            ? "只读安全策略已确认：本次运行不会登录、结账、下载文件或提交表单。"
+            : "已跳过人工确认卡片，但 WebPilot 仍默认执行只读安全策略。"
+          : "WebPilot 默认阻止登录、结账、下载文件和提交表单。当前运行只读取公开网页，不会替你做高风险操作。"}
+      </p>
+      {resolved ? (
+        <div className="approval-resolved">安全边界已锁定</div>
+      ) : (
+        <div className="approval-actions">
+          <button className="primary-button" onClick={() => { onChange("approved"); showToast("已确认只读安全策略。"); }}>确认</button>
+          <button className="soft-button" onClick={() => { onChange("approved"); showToast("本次运行已确认。"); }}>仅本次确认</button>
+          <button className="soft-button" onClick={() => { onChange("skipped"); showToast("已跳过确认卡片。"); }}>跳过步骤</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -742,9 +1046,18 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="metric-pill">
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -767,9 +1080,7 @@ function FactTable({ facts, emptyText }: { facts: ExtractedFact[]; emptyText: st
         </thead>
         <tbody>
           {facts.length === 0 ? (
-            <tr>
-              <td colSpan={6}>{emptyText}</td>
-            </tr>
+            <tr><td colSpan={6}>{emptyText}</td></tr>
           ) : (
             facts.map((fact, index) => (
               <tr key={`${fact.product}-${fact.plan}-${index}`}>
@@ -793,12 +1104,14 @@ function ReportView({ report }: { report: AgentReport }) {
     <article className="report">
       <h2>{report.title}</h2>
       <p>{report.summary}</p>
-      <h3>关键结论</h3>
-      <ul>
-        {report.takeaways.map((takeaway) => (
-          <li key={takeaway}>{takeaway}</li>
+      <div className="takeaway-grid">
+        {report.takeaways.slice(0, 4).map((takeaway) => (
+          <div key={takeaway}>
+            <span>•</span>
+            <p>{takeaway}</p>
+          </div>
         ))}
-      </ul>
+      </div>
       <h3>来源</h3>
       <ol>
         {report.sources.map((source) => (
@@ -861,10 +1174,58 @@ function Setting({ label, value, action, onClick }: { label: string; value: stri
 function progressFromStage(stage: string, status: string) {
   if (status === "completed") return 100;
   if (stage === "plan") return 18;
-  if (stage === "run") return 42;
-  if (stage === "extract") return 68;
-  if (stage === "report") return 88;
+  if (stage === "run") return 46;
+  if (stage === "extract") return 70;
+  if (stage === "report") return 90;
   return 0;
+}
+
+function averageConfidence(facts: ExtractedFact[]) {
+  if (facts.length === 0) return "--";
+  return `${Math.round((facts.reduce((sum, fact) => sum + fact.confidence, 0) / facts.length) * 100)}%`;
+}
+
+function buildEvidenceQuality(snapshots: BrowserSnapshot[], facts: ExtractedFact[]) {
+  const seedOrOfficial = snapshots.filter((snapshot) => snapshot.sourceType === "seed" || snapshot.url.includes(snapshot.target.toLowerCase())).length;
+  const captureRate = snapshots.length > 0 ? 100 : 0;
+  const avg = facts.length > 0 ? Math.round((facts.reduce((sum, fact) => sum + fact.confidence, 0) / facts.length) * 100) : 0;
+  const score = Math.round((captureRate * 0.35) + (Math.min(seedOrOfficial, Math.max(snapshots.length, 1)) / Math.max(snapshots.length, 1)) * 35 + avg * 0.3);
+  return {
+    score,
+    seedOrOfficial,
+    captureRate,
+    consistency: facts.length > 0 ? "结构化一致" : "待运行",
+    label: score >= 80 ? "优秀" : score >= 60 ? "可用" : "待验证",
+    summary: snapshots.length === 0 ? "运行后会评估来源覆盖、抓取成功率和抽取一致性。" : "来源覆盖、页面抓取和结构化抽取已形成可复核证据链。"
+  };
+}
+
+function buildPortfolioScript({
+  run,
+  report,
+  facts,
+  snapshots,
+  runMode
+}: {
+  run: AgentRun | null;
+  report: AgentReport | null;
+  facts: ExtractedFact[];
+  snapshots: BrowserSnapshot[];
+  runMode: RunMode;
+}) {
+  const sourceCount = report?.sources.length ?? snapshots.length;
+  const factCount = facts.length;
+  return [
+    "1. 背景：我做的是一个本地可部署的浏览器工作流 Agent，用来解决网页调研过程不可见、结果难复核的问题。",
+    `2. 核心亮点：它把自然语言任务拆成计划、只读浏览、结构化抽取、证据质量评估和 Markdown 报告导出，当前模式是${runModeText[runMode]}模式。`,
+    `3. 技术实现：前端用 Next.js + React 管理流式状态，后端用 Playwright/fetch/种子数据降级链路，任务通过 SSE 实时回传。`,
+    `4. 演示结果：${run?.status === "completed" ? `本次运行抽取了 ${factCount} 行数据、引用 ${sourceCount} 个来源，并生成可导出的报告。` : "运行后可以实时看到执行轨迹、浏览证据、抽取表和交付报告。"}`,
+    "5. 安全边界：默认只读，不登录、不提交表单、不付款，人工确认卡片会把高风险操作挡住。"
+  ].join("\n");
+}
+
+function taskTitle(task: string) {
+  return task.split("\n")[0].trim().slice(0, 72) || "未命名任务";
 }
 
 function downloadFile(filename: string, content: string, type: string) {

@@ -21,3 +21,8 @@ export async function saveRun(run: AgentRun) {
   const next = [run, ...runs.filter((item) => item.id !== run.id)].slice(0, 50);
   await writeFile(runsPath, JSON.stringify(next, null, 2), "utf8");
 }
+
+export async function clearRuns() {
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(runsPath, "[]", "utf8");
+}
