@@ -11,6 +11,8 @@ export type TimelineStatus = "pending" | "running" | "completed" | "warning" | "
 
 export type AgentStage = "plan" | "run" | "approval" | "extract" | "report";
 
+export type RunMode = "smart" | "demo" | "live";
+
 export type TimelineItem = {
   id: string;
   index: number;
@@ -72,6 +74,7 @@ export type AgentReport = {
 export type AgentRun = {
   id: string;
   task: string;
+  runMode?: RunMode;
   status: RunStatus;
   activeStage: AgentStage;
   createdAt: string;

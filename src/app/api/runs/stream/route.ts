@@ -1,12 +1,13 @@
 import { runAgent } from "@/lib/agent/runner";
-import type { RunEvent } from "@/lib/types/agent";
+import type { RunEvent, RunMode } from "@/lib/types/agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { task?: string };
+  const body = (await request.json().catch(() => ({}))) as { task?: string; runMode?: RunMode };
   const task = body.task?.trim();
+  const runMode = parseRunMode(body.runMode);
 
   if (!task) {
     return Response.json({ error: "请输入任务。" }, { status: 400 });
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
-      await runAgent(task, send);
+      await runAgent(task, send, { runMode });
       controller.close();
     }
   });
@@ -32,4 +33,9 @@ export async function POST(request: Request) {
       "X-Content-Type-Options": "nosniff"
     }
   });
+}
+
+function parseRunMode(value: unknown): RunMode {
+  if (value === "demo" || value === "live" || value === "smart") return value;
+  return "smart";
 }

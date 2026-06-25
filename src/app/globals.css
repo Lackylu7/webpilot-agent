@@ -44,6 +44,11 @@ button {
   cursor: pointer;
 }
 
+input,
+textarea {
+  font: inherit;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -295,6 +300,17 @@ a {
   padding: 18px 18px 14px;
 }
 
+.composer-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .composer textarea {
   width: 100%;
   min-height: 78px;
@@ -314,8 +330,9 @@ a {
 .composer-footer {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 10px;
   color: #cad8ee;
+  flex-wrap: wrap;
 }
 
 .composer-footer .primary-button {
@@ -323,11 +340,39 @@ a {
   min-width: 112px;
 }
 
+.text-control {
+  border: 0;
+  background: transparent;
+  color: #83b4ff;
+  padding: 8px 0;
+  font-weight: 700;
+}
+
+.text-control:hover,
+.text-control.selected {
+  color: #cde2ff;
+}
+
 .stage-strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   overflow: hidden;
   padding: 6px;
+}
+
+.progress-strip {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.progress-strip span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), var(--cyan));
+  transition: width 0.35s ease;
 }
 
 .stage-step {
@@ -499,6 +544,17 @@ a {
   border-bottom: 1px solid rgba(150, 181, 222, 0.11);
 }
 
+.browser-address button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #9fc3ff;
+}
+
 .browser-address span:nth-child(2) {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -580,6 +636,32 @@ a {
   opacity: 0.72;
 }
 
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(150, 181, 222, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-card strong {
+  color: #f4f8ff;
+  font-size: 18px;
+}
+
 .table-wrap {
   max-height: 300px;
   overflow: auto;
@@ -613,6 +695,13 @@ td {
 .full-width {
   width: calc(100% - 22px);
   margin: 0 11px 11px;
+}
+
+.split-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 11px 11px;
 }
 
 .report-panel {
@@ -651,6 +740,181 @@ td {
   margin-top: auto;
   padding: 12px;
   border-top: 1px solid var(--border);
+}
+
+.toast {
+  position: fixed;
+  top: 82px;
+  right: 24px;
+  z-index: 60;
+  max-width: 360px;
+  padding: 12px 14px;
+  border: 1px solid rgba(114, 170, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(8, 20, 36, 0.94);
+  box-shadow: var(--shadow);
+  color: #eaf3ff;
+  backdrop-filter: blur(16px);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 8, 18, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.modal-panel {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid rgba(150, 181, 222, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(18, 35, 58, 0.98), rgba(7, 18, 33, 0.98));
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55);
+}
+
+.modal-panel.wide {
+  width: min(980px, 100%);
+}
+
+.modal-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.modal-list,
+.settings-grid,
+.help-copy,
+.plan-view {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.modal-row {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid rgba(150, 181, 222, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.modal-row:hover {
+  border-color: rgba(114, 170, 255, 0.44);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.modal-row span,
+.help-copy p,
+.plan-view p,
+.plan-view li {
+  color: #bdd0e9;
+  line-height: 1.55;
+}
+
+.preset-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  cursor: default;
+}
+
+.modal-row-main {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.soft-button.danger {
+  border-color: rgba(255, 125, 142, 0.28);
+  color: #ffb5bf;
+}
+
+.soft-button.danger:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.field,
+.context-field {
+  width: calc(100% - 32px);
+  margin: 16px 16px 0;
+  border: 1px solid rgba(150, 181, 222, 0.16);
+  border-radius: 12px;
+  background: rgba(3, 12, 24, 0.52);
+  color: var(--text);
+  outline: 0;
+  padding: 12px 13px;
+}
+
+.context-field {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 16px 16px 0;
+}
+
+.inline-form .field {
+  width: 100%;
+  margin: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px;
+}
+
+.modal-actions.compact {
+  padding: 10px 16px 0;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid rgba(150, 181, 222, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.setting-row div {
+  display: grid;
+  gap: 5px;
+}
+
+.setting-row span {
+  color: var(--muted);
 }
 
 .empty-state {
@@ -695,11 +959,44 @@ td {
   }
 
   .topbar,
-  .top-actions,
   .center-grid,
   .stage-strip {
     display: flex;
     flex-wrap: wrap;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    gap: 10px;
+    height: auto;
+    padding: 12px 14px;
+  }
+
+  .brand {
+    flex: 1 1 100%;
+    gap: 10px;
+  }
+
+  .brand strong {
+    font-size: 22px;
+    line-height: 1.05;
+  }
+
+  .brand .divider,
+  .brand .divider + span {
+    display: none;
+  }
+
+  .top-actions {
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .top-actions .avatar {
+    margin-left: auto;
   }
 
   .sidebar,

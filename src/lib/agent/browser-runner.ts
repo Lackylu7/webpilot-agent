@@ -1,9 +1,11 @@
-import type { BrowserSnapshot, ResearchTarget } from "@/lib/types/agent";
+import type { BrowserSnapshot, ResearchTarget, RunMode } from "@/lib/types/agent";
 import { nowIso } from "@/lib/utils/time";
 import { seedSnapshot } from "./seed-data";
 
-export async function browseTarget(target: ResearchTarget): Promise<BrowserSnapshot> {
-  if (process.env.WEBPILOT_DEMO_MODE === "true") {
+export async function browseTarget(target: ResearchTarget, runMode: RunMode = "smart"): Promise<BrowserSnapshot> {
+  const shouldUseSeedFirst = runMode === "demo" || (runMode === "smart" && process.env.WEBPILOT_DEMO_MODE === "true");
+
+  if (shouldUseSeedFirst) {
     const seeded = seedSnapshot(target.name);
     if (seeded) return seeded;
   }

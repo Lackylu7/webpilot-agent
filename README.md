@@ -24,6 +24,9 @@ Most demo agents stop at chat. WebPilot shows the work:
 - execution timeline
 - cited report generation
 - local task history
+- saved presets and context-aware reruns
+- Markdown / CSV exports
+- persisted UI settings for local demos
 
 It is designed to be cloned, run locally, recorded for a portfolio demo, and extended into a hosted product.
 
@@ -56,13 +59,13 @@ The app works without an API key by using deterministic planning and seed extrac
 Desktop:
 
 ```text
-docs/screenshots/webpilot-dashboard-desktop.png
+docs/screenshots/webpilot-dashboard-productized-cn.png
 ```
 
 Mobile:
 
 ```text
-docs/screenshots/webpilot-dashboard-mobile.png
+docs/screenshots/webpilot-dashboard-productized-mobile-cn.png
 ```
 
 ## Optional live LLM mode
@@ -101,6 +104,14 @@ For completely offline portfolio demos:
 ```bash
 WEBPILOT_DEMO_MODE=true
 ```
+
+The UI also exposes three run modes:
+
+- Smart: follows environment settings and falls back safely when live pages fail.
+- Demo: uses deterministic seed data first for stable portfolio walkthroughs.
+- Live: tries real browser/fetch capture first, then falls back only if needed.
+
+Saved presets, run mode, and auto-scroll preferences are persisted in browser storage so demos survive refreshes.
 
 ## Commands
 

@@ -1,4 +1,4 @@
-import type { AgentRun, RunEvent, TimelineItem } from "@/lib/types/agent";
+import type { AgentRun, RunEvent, RunMode, TimelineItem } from "@/lib/types/agent";
 import { createId } from "@/lib/utils/ids";
 import { nowIso } from "@/lib/utils/time";
 import { browseTarget } from "./browser-runner";
@@ -9,11 +9,13 @@ import { saveRun } from "@/lib/store/runs";
 
 type Emit = (event: RunEvent) => void;
 
-export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
+export async function runAgent(task: string, emit: Emit, options: { runMode?: RunMode } = {}): Promise<AgentRun> {
+  const runMode = options.runMode ?? "smart";
   const startedAt = nowIso();
   const run: AgentRun = {
     id: createId(),
     task,
+    runMode,
     status: "planning",
     activeStage: "plan",
     createdAt: startedAt,
@@ -35,7 +37,7 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
     emit({ type: "stage", stage: "plan", status: "planning" });
     emitTimeline(run, emit, {
       title: "已生成执行计划",
-      detail: `规划了 ${plan.steps.length} 个步骤，准备调研 ${plan.targets.length} 个对象。`,
+      detail: `规划了 ${plan.steps.length} 个步骤，准备调研 ${plan.targets.length} 个对象。运行模式：${runModeLabel(runMode)}。`,
       status: "completed",
       durationMs: Date.now() - planStarted
     });
@@ -50,7 +52,7 @@ export async function runAgent(task: string, emit: Emit): Promise<AgentRun> {
         status: "running",
         url: target.officialUrl
       });
-      const snapshot = await browseTarget(target);
+      const snapshot = await browseTarget(target, runMode);
       run.snapshots.push(snapshot);
       run.updatedAt = nowIso();
       emit({ type: "snapshot", snapshot });
@@ -133,4 +135,10 @@ function sourceTypeText(sourceType: string) {
   if (sourceType === "fetch") return "网页读取";
   if (sourceType === "seed") return "演示数据";
   return sourceType;
+}
+
+function runModeLabel(runMode: RunMode) {
+  if (runMode === "demo") return "演示优先";
+  if (runMode === "live") return "实时优先";
+  return "智能自动";
 }
