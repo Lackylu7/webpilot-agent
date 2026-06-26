@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentPlan,
   AgentReport,
@@ -14,7 +14,7 @@ import type {
 } from "@/lib/types/agent";
 import { formatDuration } from "@/lib/utils/time";
 
-type ModalName = "history" | "presets" | "plan" | "data" | "settings" | "help" | "context" | "script" | null;
+type ModalName = "history" | "presets" | "plan" | "data" | "settings" | "diagnostics" | "help" | "context" | "script" | null;
 type WorkTab = "trace" | "evidence" | "data" | "report";
 
 type Preset = {
@@ -22,6 +22,39 @@ type Preset = {
   name: string;
   prompt: string;
   description: string;
+};
+
+type HealthStatus = {
+  ok: boolean;
+  runtime: {
+    node: string;
+    platform: string;
+    demoMode: boolean;
+    runModeDefault: string;
+    timeoutMs: number;
+    maxPages: number;
+    browserHeadless: boolean;
+  };
+  llm: {
+    enabled: boolean;
+    configured: boolean;
+    model: string;
+    baseUrl: string;
+  };
+  browser: {
+    available: boolean;
+    name: string;
+    executablePath?: string;
+    error?: string;
+  };
+  store: {
+    dataDir: string;
+    runsPath: string;
+    runCount: number;
+    maxRuns: number;
+    sizeBytes: number;
+    latestRunAt: string | null;
+  };
 };
 
 const defaultTask = "对比 Notion、ClickUp 和 Linear 的定价，整理免费版、基础套餐与团队套餐的价格、计费周期及关键限制，并生成对比报告。";
@@ -66,7 +99,8 @@ const statusText: Record<RunStatus | "idle", string> = {
   extracting: "抽取中",
   reporting: "生成报告",
   completed: "已完成",
-  failed: "失败"
+  failed: "失败",
+  cancelled: "已停止"
 };
 
 const sourceText: Record<string, string> = {
@@ -117,10 +151,13 @@ export default function Home() {
   const [storageReady, setStorageReady] = useState(false);
   const [selectedSnapshotUrl, setSelectedSnapshotUrl] = useState("");
   const [workTab, setWorkTab] = useState<WorkTab>("trace");
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [healthError, setHealthError] = useState("");
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeStage = run?.activeStage ?? "plan";
   const status = run?.status ?? "idle";
@@ -136,6 +173,10 @@ export default function Home() {
     () => buildPortfolioScript({ run, report, facts, snapshots, runMode }),
     [run, report, facts, snapshots, runMode]
   );
+  const runSummary = useMemo(
+    () => buildRunSummary({ run, timeline, facts, snapshots, report }),
+    [run, timeline, facts, snapshots, report]
+  );
   const progress = progressFromStage(activeStage, status);
   const plan = run?.plan;
 
@@ -147,6 +188,7 @@ export default function Home() {
 
   useEffect(() => {
     void loadHistory();
+    void loadHealth();
     try {
       const savedPresets = JSON.parse(window.localStorage.getItem(storageKeys.presets) ?? "[]") as Preset[];
       if (Array.isArray(savedPresets) && savedPresets.length > 0) {
@@ -206,6 +248,18 @@ export default function Home() {
       setHistory(data.runs ?? []);
     } catch {
       // History is a convenience panel. The core run path should still work.
+    }
+  }
+
+  async function loadHealth() {
+    try {
+      setHealthError("");
+      const response = await fetch("/api/health", { cache: "no-store" });
+      if (!response.ok) throw new Error("健康检查接口暂不可用。");
+      const data = (await response.json()) as HealthStatus;
+      setHealth(data);
+    } catch (healthCheckError) {
+      setHealthError(healthCheckError instanceof Error ? healthCheckError.message : "健康检查失败。");
     }
   }
 
@@ -297,8 +351,9 @@ export default function Home() {
       setFacts(event.run.facts);
       setReport(event.run.report ?? null);
       setWorkTab("trace");
-      setHistory((current) => [event.run, ...current.filter((item) => item.id !== event.run.id)].slice(0, 20));
-      showToast("任务已完成，报告和数据已保存。");
+      setHistory((current) => [event.run, ...current.filter((item) => item.id !== event.run.id)].slice(0, 100));
+      void loadHealth();
+      showToast(event.run.status === "cancelled" ? "任务已停止，已保存当前轨迹。" : "任务已完成，报告和数据已保存。");
     }
     if (event.type === "error") {
       setError(event.message);
@@ -381,7 +436,43 @@ export default function Home() {
       return;
     }
     setHistory([]);
+    void loadHealth();
     showToast("本地任务历史已清空。");
+  }
+
+  function exportHistory() {
+    if (history.length === 0) {
+      showToast("还没有历史任务可备份。");
+      return;
+    }
+    downloadFile(
+      `webpilot-history-${fileDate()}.json`,
+      JSON.stringify({ schema: "webpilot-history-v1", exportedAt: new Date().toISOString(), runs: history }, null, 2),
+      "application/json;charset=utf-8"
+    );
+    showToast("本地历史备份已导出。");
+  }
+
+  async function importHistoryFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const parsed = JSON.parse(await file.text()) as { runs?: AgentRun[] } | AgentRun[];
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed)
+      });
+      const data = (await response.json()) as { runs?: AgentRun[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "导入失败。");
+      setHistory(data.runs ?? []);
+      void loadHealth();
+      showToast(`已恢复 ${data.runs?.length ?? 0} 条本地历史。`);
+    } catch (importError) {
+      showToast(importError instanceof Error ? importError.message : "历史备份文件无法识别。");
+    }
   }
 
   function loadRun(selectedRun: AgentRun) {
@@ -450,6 +541,34 @@ export default function Home() {
     showToast("数据表已导出为 CSV。");
   }
 
+  function downloadRunPackage() {
+    if (!run && timeline.length === 0 && facts.length === 0 && !report) {
+      showToast("还没有可导出的运行包。");
+      return;
+    }
+    downloadFile(
+      `webpilot-run-package-${fileDate()}.json`,
+      JSON.stringify(
+        {
+          schema: "webpilot-run-package-v1",
+          exportedAt: new Date().toISOString(),
+          run,
+          timeline,
+          snapshots,
+          facts,
+          report,
+          evidenceQuality,
+          runSummary,
+          portfolioScript
+        },
+        null,
+        2
+      ),
+      "application/json;charset=utf-8"
+    );
+    showToast("完整运行包已导出。");
+  }
+
   function openActiveSource() {
     if (!activeSnapshot) {
       showToast("还没有可打开的来源。");
@@ -478,6 +597,9 @@ export default function Home() {
         <div className="top-actions">
           <span className="online-dot" />
           <span>Agent 在线</span>
+          <button className={`mode-pill ${health?.ok ? "healthy" : "warning"}`} onClick={() => setModal("diagnostics")}>
+            本机健康 {health?.browser.available === false ? "需处理" : "正常"}
+          </button>
           <button className="mode-pill" onClick={() => setModal("settings")}>
             {runModeText[runMode]}模式
           </button>
@@ -486,6 +608,14 @@ export default function Home() {
           <span className="avatar">AK</span>
         </div>
       </header>
+
+      <input
+        ref={importInputRef}
+        className="hidden-file"
+        type="file"
+        accept="application/json,.json"
+        onChange={(event) => void importHistoryFile(event)}
+      />
 
       <aside className="sidebar">
         <button className="new-task" onClick={newTask}>+ 新建任务 <span>Ctrl K</span></button>
@@ -653,6 +783,15 @@ export default function Home() {
         <DataPanel facts={facts} visibleFacts={visibleFacts} avgConfidence={avgConfidence} onFullData={() => setModal("data")} onDownloadCsv={downloadCsv} />
         <ReportPanel report={report} onCopy={copyReport} onDownload={downloadMarkdown} onOpenSource={openActiveSource} />
         <QualityPanel quality={evidenceQuality} snapshots={snapshots} />
+        <OperationsPanel
+          summary={runSummary}
+          health={health}
+          healthError={healthError}
+          onDiagnostics={() => setModal("diagnostics")}
+          onExportRunPackage={downloadRunPackage}
+          onExportHistory={exportHistory}
+          onImportHistory={() => importInputRef.current?.click()}
+        />
         <section className="panel export-card">
           <PanelTitle title="导出与分享" meta="本地文件" />
           <div className="export-grid">
@@ -741,12 +880,29 @@ export default function Home() {
       {modal === "settings" && (
         <Modal title="运行设置" onClose={() => setModal(null)}>
           <div className="settings-grid">
+            <LocalHealthOverview health={health} healthError={healthError} onRefresh={() => void loadHealth()} onDiagnostics={() => setModal("diagnostics")} />
             {runModes.map((item) => (
               <Setting key={item.mode} label={item.title} value={item.detail} action={runMode === item.mode ? "已选择" : "选择"} onClick={() => setRunMode(item.mode)} />
             ))}
             <Setting label="自动滚动" value={autoScroll ? "执行轨迹会自动跟随最新步骤" : "手动查看执行轨迹"} action={autoScroll ? "关闭" : "开启"} onClick={() => setAutoScroll((value) => !value)} />
             <Setting label="浏览权限" value="只读，不登录、不付款、不提交表单" action="查看说明" onClick={() => setModal("help")} />
+            <div className="setting-row">
+              <div>
+                <strong>本地数据备份</strong>
+                <span>导出或恢复任务历史，换电脑也能保留演示记录。</span>
+              </div>
+              <div className="setting-actions">
+                <button className="soft-button" onClick={exportHistory}>导出</button>
+                <button className="soft-button" onClick={() => importInputRef.current?.click()}>恢复</button>
+              </div>
+            </div>
           </div>
+        </Modal>
+      )}
+
+      {modal === "diagnostics" && (
+        <Modal title="本机诊断" onClose={() => setModal(null)} wide>
+          <DiagnosticsView health={health} healthError={healthError} onRefresh={() => void loadHealth()} />
         </Modal>
       )}
 
@@ -1000,6 +1156,134 @@ function QualityPanel({ quality, snapshots }: { quality: ReturnType<typeof build
   );
 }
 
+function OperationsPanel({
+  summary,
+  health,
+  healthError,
+  onDiagnostics,
+  onExportRunPackage,
+  onExportHistory,
+  onImportHistory
+}: {
+  summary: ReturnType<typeof buildRunSummary>;
+  health: HealthStatus | null;
+  healthError: string;
+  onDiagnostics: () => void;
+  onExportRunPackage: () => void;
+  onExportHistory: () => void;
+  onImportHistory: () => void;
+}) {
+  const healthLabel = healthError ? "异常" : health ? "正常" : "检测中";
+  return (
+    <section className="panel ops-card">
+      <PanelTitle title="本地运维中心" meta={healthLabel} />
+      <div className="ops-summary">
+        <div>
+          <span>本次运行</span>
+          <strong>{summary.status}</strong>
+          <small>{summary.nextAction}</small>
+        </div>
+        <div>
+          <span>历史记录</span>
+          <strong>{health ? `${health.store.runCount}/${health.store.maxRuns}` : "--"}</strong>
+          <small>{health ? formatBytes(health.store.sizeBytes) : "等待检测"}</small>
+        </div>
+      </div>
+      <div className="ops-grid">
+        <button onClick={onExportRunPackage}>导出运行包</button>
+        <button onClick={onExportHistory}>备份历史</button>
+        <button onClick={onImportHistory}>恢复历史</button>
+        <button onClick={onDiagnostics}>诊断详情</button>
+      </div>
+    </section>
+  );
+}
+
+function LocalHealthOverview({
+  health,
+  healthError,
+  onRefresh,
+  onDiagnostics
+}: {
+  health: HealthStatus | null;
+  healthError: string;
+  onRefresh: () => void;
+  onDiagnostics: () => void;
+}) {
+  const browserText = health?.browser.available ? "浏览器运行时可用" : health ? "浏览器运行时异常" : "等待检测";
+  const llmText = health?.llm.enabled ? `LLM 已启用：${health.llm.model}` : health?.llm.configured ? "已配置 API，但演示模式优先" : "未配置 API，使用本地演示链路";
+  return (
+    <div className="health-overview">
+      <div>
+        <strong>本机健康</strong>
+        <span>{healthError || `${browserText} · ${llmText}`}</span>
+      </div>
+      <div className="setting-actions">
+        <button className="soft-button" onClick={onRefresh}>重新检测</button>
+        <button className="soft-button" onClick={onDiagnostics}>详情</button>
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticsView({
+  health,
+  healthError,
+  onRefresh
+}: {
+  health: HealthStatus | null;
+  healthError: string;
+  onRefresh: () => void;
+}) {
+  if (healthError) {
+    return (
+      <div className="diagnostics">
+        <EmptyState title="健康检查失败" detail={healthError} />
+        <div className="modal-actions">
+          <button className="primary-button" onClick={onRefresh}>重新检测</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!health) {
+    return (
+      <div className="diagnostics">
+        <EmptyState title="正在检测本机环境" detail="WebPilot 正在读取运行时、浏览器和本地历史存储状态。" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="diagnostics">
+      <div className="diagnostics-grid">
+        <DiagnosticItem label="运行时" value={`${health.runtime.node} · ${health.runtime.platform}`} state="ok" />
+        <DiagnosticItem label="浏览器" value={health.browser.available ? `${health.browser.name} 可用` : health.browser.error ?? "不可用"} state={health.browser.available ? "ok" : "warn"} />
+        <DiagnosticItem label="模型 API" value={health.llm.enabled ? `${health.llm.model} 已启用` : health.llm.configured ? "已配置，当前演示模式不调用" : "未配置，使用本地演示链路"} state={health.llm.enabled || !health.llm.configured ? "ok" : "warn"} />
+        <DiagnosticItem label="数据目录" value={health.store.dataDir} state="ok" />
+        <DiagnosticItem label="历史容量" value={`${health.store.runCount}/${health.store.maxRuns} · ${formatBytes(health.store.sizeBytes)}`} state="ok" />
+        <DiagnosticItem label="抓取设置" value={`${health.runtime.maxPages} 页上限 · ${health.runtime.timeoutMs}ms 超时 · ${health.runtime.browserHeadless ? "无头" : "可视"}浏览`} state="ok" />
+      </div>
+      <div className="help-copy">
+        <p>本地版不会上传历史、报告或密钥。这里显示的是本机运行状态，用来排查“为什么实时抓取失败”“为什么没有调用模型 API”等问题。</p>
+        <p>如果浏览器不可用，运行：npx playwright install chromium。没有 API key 时，演示模式仍可完整运行。</p>
+      </div>
+      <div className="modal-actions">
+        <button className="primary-button" onClick={onRefresh}>重新检测</button>
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticItem({ label, value, state }: { label: string; value: string; state: "ok" | "warn" }) {
+  return (
+    <div className={`diagnostic-item ${state}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function ApprovalCard({
   state,
   onChange,
@@ -1173,6 +1457,7 @@ function Setting({ label, value, action, onClick }: { label: string; value: stri
 
 function progressFromStage(stage: string, status: string) {
   if (status === "completed") return 100;
+  if (status === "cancelled") return 100;
   if (stage === "plan") return 18;
   if (stage === "run") return 46;
   if (stage === "extract") return 70;
@@ -1197,6 +1482,44 @@ function buildEvidenceQuality(snapshots: BrowserSnapshot[], facts: ExtractedFact
     consistency: facts.length > 0 ? "结构化一致" : "待运行",
     label: score >= 80 ? "优秀" : score >= 60 ? "可用" : "待验证",
     summary: snapshots.length === 0 ? "运行后会评估来源覆盖、抓取成功率和抽取一致性。" : "来源覆盖、页面抓取和结构化抽取已形成可复核证据链。"
+  };
+}
+
+function buildRunSummary({
+  run,
+  timeline,
+  facts,
+  snapshots,
+  report
+}: {
+  run: AgentRun | null;
+  timeline: TimelineItem[];
+  facts: ExtractedFact[];
+  snapshots: BrowserSnapshot[];
+  report: AgentReport | null;
+}) {
+  const durationMs = timeline.reduce((sum, item) => sum + (item.durationMs ?? 0), 0);
+  const browserCount = snapshots.filter((snapshot) => snapshot.sourceType === "browser").length;
+  const fetchCount = snapshots.filter((snapshot) => snapshot.sourceType === "fetch").length;
+  const seedCount = snapshots.filter((snapshot) => snapshot.sourceType === "seed").length;
+  const avg = facts.length > 0 ? Math.round((facts.reduce((sum, fact) => sum + fact.confidence, 0) / facts.length) * 100) : 0;
+  const status = run ? statusText[run.status] : "待运行";
+  const sourceMix = snapshots.length === 0 ? "暂无来源" : `浏览器 ${browserCount} · 读取 ${fetchCount} · 演示 ${seedCount}`;
+  const nextAction = report
+    ? "报告、表格和来源证据已可交付。"
+    : run?.status === "failed"
+      ? "建议切换演示模式或缩小任务范围后重试。"
+      : run?.status === "cancelled"
+        ? "可以从历史载入停止前轨迹，或重新运行。"
+        : "运行后会生成可交付报告。";
+
+  return {
+    status,
+    duration: durationMs > 0 ? formatDuration(durationMs) : "--",
+    sourceMix,
+    dataRows: facts.length,
+    confidence: facts.length > 0 ? `${avg}%` : "--",
+    nextAction
   };
 }
 
@@ -1242,4 +1565,14 @@ function downloadFile(filename: string, content: string, type: string) {
 
 function csvCell(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+function fileDate() {
+  return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+}
+
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }

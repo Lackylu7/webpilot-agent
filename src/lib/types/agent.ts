@@ -5,7 +5,8 @@ export type RunStatus =
   | "extracting"
   | "reporting"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type TimelineStatus = "pending" | "running" | "completed" | "warning" | "failed";
 

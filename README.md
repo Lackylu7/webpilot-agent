@@ -27,8 +27,11 @@ Most demo agents stop at chat. WebPilot shows the work:
 - saved presets and context-aware reruns
 - Markdown / CSV exports
 - persisted UI settings for local demos
+- local health diagnostics
+- history backup / restore
+- full run package export
 
-It is designed to be cloned, run locally, recorded for a portfolio demo, and extended into a hosted product.
+It is designed to be cloned, run locally, recorded for a portfolio demo, and operated as a serious local-first tool.
 
 ## Tech stack
 
@@ -37,6 +40,7 @@ It is designed to be cloned, run locally, recorded for a portfolio demo, and ext
 - Local JSON store for task history
 - Optional OpenAI-compatible Responses API integration
 - Deterministic demo mode when no API key is configured
+- Local diagnostics, backup / restore, and run package exports
 - Vitest for core workflow tests
 
 ## Quick start
@@ -53,6 +57,14 @@ http://localhost:3000
 ```
 
 The app works without an API key by using deterministic planning and seed extraction for the default demo targets.
+
+For a production-like local preview:
+
+```powershell
+$env:WEBPILOT_DEMO_MODE="true"
+npm run build
+npm run start
+```
 
 ## Product screenshots
 
@@ -113,6 +125,26 @@ The UI also exposes three run modes:
 
 Saved presets, run mode, and auto-scroll preferences are persisted in browser storage so demos survive refreshes.
 
+## Local product controls
+
+WebPilot is local-first. It stores run history on your machine and exposes diagnostics inside the Settings / Local Diagnostics UI.
+
+Useful environment variables:
+
+```bash
+WEBPILOT_DATA_DIR=./data          # where local run history is stored
+WEBPILOT_HISTORY_LIMIT=100        # max saved runs
+WEBPILOT_MAX_PAGES=5              # max pages per run
+WEBPILOT_TIMEOUT_MS=15000         # browser/fetch timeout
+```
+
+Local product features:
+
+- health check for browser runtime, model API configuration, and local store
+- backup / restore for task history JSON
+- full run package export with timeline, sources, facts, report, quality score, and interview script
+- cancelled runs are saved, so stopping a task still leaves an auditable trace
+
 ## How to demo it
 
 For interview or resume demos, use Demo mode first:
@@ -121,7 +153,7 @@ For interview or resume demos, use Demo mode first:
 2. Pick the built-in SaaS pricing comparison preset.
 3. Click Run.
 4. Walk through execution trace, browser evidence, extracted facts, source quality, and the deliverable report.
-5. Export Markdown / CSV or copy the portfolio script.
+5. Export Markdown / CSV, full run package, or copy the portfolio script.
 
 The app does not require a model API for this stable demo path. Add an OpenAI-compatible API key only when you want broader live planning and extraction.
 

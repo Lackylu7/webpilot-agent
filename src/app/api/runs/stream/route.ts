@@ -20,7 +20,7 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
-      await runAgent(task, send, { runMode });
+      await runAgent(task, send, { runMode, signal: request.signal });
       controller.close();
     }
   });

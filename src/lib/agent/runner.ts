@@ -9,8 +9,13 @@ import { saveRun } from "@/lib/store/runs";
 
 type Emit = (event: RunEvent) => void;
 
-export async function runAgent(task: string, emit: Emit, options: { runMode?: RunMode } = {}): Promise<AgentRun> {
+export async function runAgent(
+  task: string,
+  emit: Emit,
+  options: { runMode?: RunMode; signal?: AbortSignal } = {}
+): Promise<AgentRun> {
   const runMode = options.runMode ?? "smart";
+  const signal = options.signal;
   const startedAt = nowIso();
   const run: AgentRun = {
     id: createId(),
@@ -28,8 +33,10 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
   emit({ type: "run", run });
 
   try {
+    assertNotAborted(signal);
     const planStarted = Date.now();
     const plan = await createPlan(task);
+    assertNotAborted(signal);
     run.plan = plan;
     run.status = "running";
     run.activeStage = "run";
@@ -45,6 +52,7 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
     emit({ type: "stage", stage: "run", status: "running" });
 
     for (const target of plan.targets) {
+      assertNotAborted(signal);
       const browseStarted = Date.now();
       emitTimeline(run, emit, {
         title: `打开 ${target.name}`,
@@ -53,6 +61,7 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
         url: target.officialUrl
       });
       const snapshot = await browseTarget(target, runMode);
+      assertNotAborted(signal);
       run.snapshots.push(snapshot);
       run.updatedAt = nowIso();
       emit({ type: "snapshot", snapshot });
@@ -69,6 +78,7 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
       emit({ type: "stage", stage: "extract", status: "extracting" });
       const extractStarted = Date.now();
       const facts = await extractFacts(snapshot);
+      assertNotAborted(signal);
       run.facts.push(...facts);
       emit({ type: "facts", facts: run.facts });
       emitTimeline(run, emit, {
@@ -83,6 +93,7 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
     run.status = "reporting";
     run.activeStage = "report";
     emit({ type: "stage", stage: "report", status: "reporting" });
+    assertNotAborted(signal);
     const report = buildReport(plan, run.snapshots, run.facts);
     run.report = report;
     emit({ type: "report", report });
@@ -99,6 +110,20 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
     emit({ type: "done", run });
     return run;
   } catch (error) {
+    if (isAbortError(error)) {
+      run.status = "cancelled";
+      run.error = "用户停止了当前运行。";
+      run.updatedAt = nowIso();
+      emitTimeline(run, emit, {
+        title: "运行已停止",
+        detail: "用户中断了当前浏览器工作流，本地已保存停止前的执行轨迹。",
+        status: "warning"
+      });
+      await saveRun(run);
+      emit({ type: "done", run });
+      return run;
+    }
+
     const message = error instanceof Error ? error.message : "未知的 Agent 运行错误";
     run.status = "failed";
     run.error = message;
@@ -112,6 +137,15 @@ export async function runAgent(task: string, emit: Emit, options: { runMode?: Ru
     emit({ type: "error", message, run });
     return run;
   }
+}
+
+function assertNotAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  throw new DOMException("Run aborted", "AbortError");
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function emitTimeline(

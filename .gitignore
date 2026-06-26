@@ -5,6 +5,7 @@ dist/
 data/
 .env
 .env*.local
+!.env.example
 playwright-report/
 test-results/
 npm-debug.log*
